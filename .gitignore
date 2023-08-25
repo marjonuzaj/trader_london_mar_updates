@@ -15,3 +15,4 @@ venv/
 # Secrets folder contents (but not the folder itself)
 _secrets/*
 !_secrets/.gitkeep
+.idea/*
