@@ -1,12 +1,17 @@
 from typing import List, Union
-from structures import Trader, Order, TradingSessionModel, Transaction, Error
+from structures import  Order, TradingSessionModel, Transaction, Error
 from uuid import UUID, uuid4
-
+from order_book import OrderBook
+from trader import Trader
 
 class TradingSession:
     def __init__(self):
         self.session_data = TradingSessionModel()
+        self.order_book = OrderBook()
         self.traders = {}  # Dictionary to hold Trader instances
+
+    def __str__(self):
+        return f'{self.session_data}'
 
     def connect_trader(self, trader: Trader):
         self.session_data.active_traders.append(trader.data.id)
@@ -16,23 +21,24 @@ class TradingSession:
         return self.traders.get(trader_id, None)  # Fetch the Trader instance by UUID
 
     def place_order(self, trader_id: UUID, order_type: str, quantity: int, price: float) -> Union[Order, Error]:
-        trader = next((t for t in self.session_data.active_traders if t.id == trader_id), None)
+        trader = self.get_trader(trader_id)  # Use the get_trader method to fetch the Trader instance
         if not trader:
             return Error(message="Trader not found")
 
         if order_type == "bid":
             required_cash = price * quantity
-            if trader.cash - trader.blocked_cash < required_cash:
+            if trader.data.cash - trader.data.blocked_cash < required_cash:  # Use trader.data to access the fields
                 return Error(message="Not enough cash for bid")
-            trader.blocked_cash += required_cash  # Block the cash
+            trader.data.blocked_cash += required_cash  # Block the cash
 
         if order_type == "ask":
-            if trader.stocks - trader.blocked_stocks < quantity:
+            if trader.data.stocks - trader.data.blocked_stocks < quantity:  # Use trader.data to access the fields
                 return Error(message="Not enough stocks for ask")
-            trader.blocked_stocks += quantity  # Block the stocks
+            trader.data.blocked_stocks += quantity  # Block the stocks
 
         # Create the order
-        order = Order(trader=trader, order_type=order_type, quantity=quantity, price=price)
+        order = Order(trader=trader.data, order_type=order_type, quantity=quantity,
+                      price=price)  # Use trader.data for the Order
         self.session_data.active_book.append(order)
         self.session_data.full_order_history.append(order)
 
