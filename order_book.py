@@ -1,8 +1,8 @@
 from typing import List, Union
-from structures import OrderBookModel
+from structures import OrderBookModel, Order, Error
 from uuid import UUID, uuid4
 from typing import Optional
-
+from utils import  utc_now
 
 class OrderBook:
     def __init__(self):
@@ -23,3 +23,21 @@ class OrderBook:
         # Calculate the spread
         spread = best_bid - best_ask
         return spread
+
+    def cancel_order(self, order_id: UUID) -> Union[Order, Error]:
+        # Find the order by its ID
+        order_to_cancel = next((order for order in self.data.active_book if order.id == order_id), None)
+
+        if not order_to_cancel:
+            return Error(message="Order not found", created_at=utc_now())
+
+        if not order_to_cancel.active:
+            return Error(message="Order is already inactive", created_at=utc_now())
+
+        # Mark the order as inactive
+        order_to_cancel.active = False
+
+        # Remove the order from the active_book
+        self.data.active_book.remove(order_to_cancel)
+
+        return order_to_cancel  # Return the cancelled order
