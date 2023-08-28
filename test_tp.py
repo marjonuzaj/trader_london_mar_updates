@@ -5,6 +5,7 @@ from pprint import pprint
 
 trader1 = Trader(cash=100, stocks=1)
 trader2 = Trader(cash=200, stocks=2)
+trader3 = Trader(cash=200, stocks=222)
 pprint(trader1)
 pprint(trader2)
 # Usage
@@ -15,6 +16,13 @@ session = TradingSession()
 # # Connect the trader to the session
 session.connect_trader(trader1)
 session.connect_trader(trader2)
+session.connect_trader(trader3)
+
+pprint(session.is_trader_connected(trader1))
+pprint(session.is_trader_connected(trader2))
+pprint(session.is_trader_connected(trader3))
+print('-------------------')
+# pprint(session.is_trader_connected(trader1))
 #
 # # Retrieve the trader by UUID
 retrieved_trader = session.get_trader(trader1.data.id)

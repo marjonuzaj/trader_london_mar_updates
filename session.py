@@ -19,11 +19,15 @@ class TradingSession:
         return f'{self.session_data}'
 
     def is_trader_connected(self, trader: Trader) -> bool:
-        trader_ids = [t.id for t in self.session_data.active_traders]
+        trader_ids = [t for t in self.session_data.active_traders]
         return trader.id in trader_ids
 
     def connect_trader(self, trader: Trader):
+        # Update the joined_at and session_id fields for the trader
         trader.data.joined_at = utc_now()
+        trader.join_session(self.id)  # This will set the session_id for the trader
+
+        # Add the trader to the session
         self.session_data.active_traders.append(trader.data.id)
         self.traders[trader.data.id] = trader  # Add the Trader instance to the dictionary
 
