@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import WebSocket, HTTPException
 from uuid import UUID
 from session import TradingSession  # Replace 'your_project_name' with your actual module name
 from trader import Trader
@@ -134,10 +134,9 @@ def get_transaction_history(session_id: UUID):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session.session_data.transaction_history  # Assuming the transaction history is stored here
-
-
 # WebSocket connection pool
 active_connections: List[WebSocket] = []
+
 @app.websocket("/ws/{trader_id}")
 async def websocket_endpoint(websocket: WebSocket, trader_id: str):
     await websocket.accept()
