@@ -12,7 +12,7 @@ class TradingSession:
         self.id = uuid4()
         self.session_data = TradingSessionModel(created_at=utc_now(), id=self.id)
         self.created_at = utc_now()
-        self.order_book = OrderBook()
+        self.order_book = OrderBook(self.session_data.active_book)
         self.traders = {}  # Dictionary to hold Trader instances
 
     def __str__(self):
@@ -40,7 +40,7 @@ class TradingSession:
     def place_order(self, trader_id: UUID, order_type: str, quantity: int, price: float) -> Union[Order, Error]:
         trader = self.get_trader(trader_id)
         if not trader:
-            return Error(message="Trader not found", created_at=datetime.utcnow())
+            return Error(message="Trader not found in a given session", created_at=datetime.utcnow())
 
         if order_type == "bid":
             required_cash = price * quantity
@@ -55,6 +55,7 @@ class TradingSession:
 
         # Create the order and include the session_id
         order = Order(
+            id=uuid4(),
             session_id=self.id,  # Add this line to set the session_id
             trader=trader.data,
             order_type=order_type,
@@ -68,6 +69,7 @@ class TradingSession:
         self.match_orders()
 
         return order
+
     def check_order_validity(self, order: Order) -> bool:
         # Validation logic here...
         pass
