@@ -16,3 +16,6 @@ venv/
 _secrets/*
 !_secrets/.gitkeep
 .idea/*
+.idea/
+.idea
+
