@@ -1,6 +1,8 @@
 from structures import TraderModel, Order, Transaction, OrderStatus
 from uuid import uuid4, UUID
 from typing import List, Optional
+
+
 class Trader:
     def __str__(self):
         return f'{self.data}'
@@ -25,7 +27,8 @@ class Trader:
         session = sessions.get(session_id)
         if not session:
             return None
-        return [order for order in session.session_data.active_book if order.trader.id == self.id and order.order_status == OrderStatus.ACTIVE]
+        return [order for order in session.session_data.active_book if
+                order.trader.id == self.id and order.order_status == OrderStatus.ACTIVE]
 
     def all_orders(self, sessions: dict) -> Optional[List[Order]]:
         session_id = self.data.session_id

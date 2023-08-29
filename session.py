@@ -88,9 +88,9 @@ class TradingSession:
                     # Match found, create a transaction
                     self.create_transaction(buyer_order=bid_order, seller_order=ask_order,
                                             quantity=min(bid_order.quantity, ask_order.quantity), price=ask_order.price)
-                    return  # Assuming that one transaction is made at a time, you can return here
+                    return
 
-    # Inside TradingSession class
+
     def create_transaction(self, buyer_order: Order, seller_order: Order, quantity: int, price: float):
         # Mark the orders as fulfilled
         buyer_order.order_status = OrderStatus.FULFILLED
