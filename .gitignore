@@ -18,4 +18,5 @@ _secrets/*
 .idea/*
 .idea/
 .idea
+.DS_Store
 
