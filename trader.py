@@ -15,7 +15,7 @@ class Trader:
         self.data = TraderModel(id=self.id, cash=cash, stocks=stocks)
 
     def join_session(self, session_id: UUID):
-        self.data.session_id = session_id  # Update session ID when trader joins a session
+        self.data.session_id = session_id  # Update session ID when traders joins a session
 
     def to_dict(self):
         return self.data.model_dump()  # Convert the TraderModel to a dictionary

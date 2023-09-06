@@ -1,7 +1,7 @@
 from fastapi import WebSocket, HTTPException
 from uuid import UUID
 from session import TradingSession  # Replace 'your_project_name' with your actual module name
-from trader import Trader
+from traders import Trader
 from structures import CreatingTraderModel, ConnectingTraderModel, NewOrderRequest
 from typing import List, Dict, Any
 from pprint import pprint
@@ -49,7 +49,7 @@ def connect_trader(info: ConnectingTraderModel):
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Assuming you have a method to check if a trader is already connected
+    # Assuming you have a method to check if a traders is already connected
     if session.is_trader_connected(trader):
         raise HTTPException(status_code=400, detail="Trader already connected to session")
 
@@ -73,7 +73,7 @@ def place_order(new_order: NewOrderRequest):
 
     if not trader or not session:
         raise HTTPException(status_code=404, detail="Trader or Session not found")
-        # Check if trader has a session_id
+        # Check if traders has a session_id
     if trader.data.session_id is None:
         raise HTTPException(status_code=400, detail="Trader not connected to any session")
 
@@ -99,16 +99,16 @@ def get_active_book(session_id: UUID):
         raise HTTPException(status_code=404, detail="Session not found")
     return session.session_data.active_book
 
-# 3. Get all active orders for a given trader
+# 3. Get all active orders for a given traders
 @app.get("/trader/{trader_id}/active_orders/")
 def get_active_orders(trader_id: UUID):
     trader = traders.get(trader_id)
     if not trader:
         raise HTTPException(status_code=404, detail="Trader not found")
-    # Assuming trader has an 'active_orders' attribute
+    # Assuming traders has an 'active_orders' attribute
     return trader.active_orders(sessions)
 
-# 4. Get all orders for a given trader
+# 4. Get all orders for a given traders
 @app.get("/trader/{trader_id}/all_orders/")
 def get_all_orders(trader_id: UUID):
     trader = traders.get(trader_id)
@@ -118,7 +118,7 @@ def get_all_orders(trader_id: UUID):
     # lets add it to TODO list
     return trader.all_orders(sessions)
 
-# 5. Get all transactions for a given trader
+# 5. Get all transactions for a given traders
 @app.get("/trader/{trader_id}/transactions/")
 def get_all_transactions(trader_id: UUID):
     trader = traders.get(trader_id)

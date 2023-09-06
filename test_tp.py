@@ -1,5 +1,5 @@
 from session import TradingSession
-from trader import Trader
+from traders import Trader
 from pprint import pprint
 # Create two traders
 
@@ -8,11 +8,11 @@ trader2 = Trader(cash=200, stocks=2)
 trader3 = Trader(cash=200, stocks=222)
 
 # Usage
-# Create a trader and a trading session
+# Create a traders and a trading session
 
 session = TradingSession()
 
-# # Connect the trader to the session
+# # Connect the traders to the session
 session.connect_trader(trader1)
 session.connect_trader(trader2)
 session.connect_trader(trader3)
@@ -20,7 +20,7 @@ session.connect_trader(trader3)
 
 # pprint(session.is_trader_connected(trader1))
 #
-# # Retrieve the trader by UUID
+# # Retrieve the traders by UUID
 retrieved_trader = session.get_trader(trader1.data.id)
 print(retrieved_trader)
 #

@@ -2,7 +2,7 @@ from typing import List, Union
 from structures import Order, TradingSessionModel, Transaction, Error, OrderStatus
 from uuid import UUID, uuid4
 from order_book import OrderBook
-from trader import Trader
+from traders import Trader
 from datetime import datetime, timezone
 from utils import utc_now
 
@@ -12,6 +12,8 @@ class TradingSession:
         self.id = uuid4()
         self.session_data = TradingSessionModel(created_at=utc_now(), id=self.id)
         self.created_at = utc_now()
+        # todo: rename order_book to active_book. Active book is a subset of orders, which are outstanding.
+        # todo: the order book is an anonymized active book, formatted in such a way that consists prices and corresponding number of orders.
         self.order_book = OrderBook(self.session_data.active_book)
         self.traders = {}  # Dictionary to hold Trader instances
 
@@ -23,11 +25,11 @@ class TradingSession:
         return trader.id in trader_ids
 
     def connect_trader(self, trader: Trader):
-        # Update the joined_at and session_id fields for the trader
+        # Update the joined_at and session_id fields for the traders
         trader.data.joined_at = utc_now()
-        trader.join_session(self.id)  # This will set the session_id for the trader
+        trader.join_session(self.id)  # This will set the session_id for the traders
 
-        # Add the trader to the session
+        # Add the traders to the session
         self.session_data.active_traders.append(trader.data.id)
         self.traders[trader.data.id] = trader  # Add the Trader instance to the dictionary
 
