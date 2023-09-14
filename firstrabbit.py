@@ -3,7 +3,9 @@ import aio_pika
 import json
 import uuid
 from datetime import datetime
-
+from pprint import pprint
+from custom_logger import setup_custom_logger
+logger = setup_custom_logger(__name__)
 
 class TradingSystem:
     def __init__(self):
@@ -12,7 +14,7 @@ class TradingSystem:
         self.broadcast_exchange_name = f'broadcast_{self.id}'
         self.queue_name = f'trading_system_queue_{self.id}'
         self.trader_exchange = None
-        print(f"Trading System created with UUID: {self.id}")
+        logger.info(f"Trading System created with UUID: {self.id}")
         self.connected_traders = {}
 
     async def initialize(self):
@@ -40,22 +42,24 @@ class TradingSystem:
         order_with_metadata['timestamp'] = datetime.utcnow()
 
         self.active_order_book.append(order_with_metadata)
-        print("Added order:", order_with_metadata)
+        logger.info(f"Added order: {order_with_metadata}")
 
     async def handle_cancel_order(self, order):
         self.active_order_book.remove(order)
-        print("Cancelled order:", order)
+        logger.info(    "Cancelled order: {order}")
 
     async def handle_update_book_status(self, order):
-        print("Updated book status:", self.active_order_book)
+        "This one returns the most recent book to the trader who requested it."
+        pass
 
     async def handle_register_me(self, msg_body):
         trader_id = msg_body.get('trader_id')
         self.connected_traders[trader_id] = "Connected"
-        print(f"Trader {trader_id} connected.")
+        logger.info(f"Trader {trader_id} connected.")
 
     async def on_individual_message(self, message):
-        print("Received individual message:", message.body.decode())
+        logger.info(f"Received individual message: {message.body.decode()}")
+
         incoming_message = json.loads(message.body.decode())
         action = incoming_message.pop('action', None)
 
@@ -64,9 +68,9 @@ class TradingSystem:
             if handler_method:
                 await handler_method(incoming_message)
             else:
-                print("Can't find such action.")
+                logger.warning(f"No handler method found for action: {action}")
         else:
-            print("No action specified in message.")
+            logger.warning(f"No action found in message: {incoming_message}")
         await message.ack()
 
 
