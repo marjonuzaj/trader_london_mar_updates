@@ -7,7 +7,7 @@ import logging
 class CustomFormatter(logging.Formatter):
     COLORS = {
         'WARNING': 'yellow',
-        'INFO': 'green',
+        'INFO': 'cyan',
         'DEBUG': 'blue',
         'CRITICAL': 'red',
         'ERROR': 'red'
