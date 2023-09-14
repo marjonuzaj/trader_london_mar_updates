@@ -2,6 +2,7 @@ import asyncio
 import aio_pika
 import json
 import uuid
+from datetime import datetime
 
 
 class TradingSystem:
@@ -10,8 +11,9 @@ class TradingSystem:
         self.active_order_book = []
         self.broadcast_exchange_name = f'broadcast_{self.id}'
         self.queue_name = f'trading_system_queue_{self.id}'
-        self.trader_exchange=None
+        self.trader_exchange = None
         print(f"Trading System created with UUID: {self.id}")
+        self.connected_traders = {}
 
     async def initialize(self):
         self.connection = await aio_pika.connect_robust("amqp://localhost")
@@ -32,28 +34,37 @@ class TradingSystem:
             routing_key=''  # routing_key is typically ignored in FANOUT exchanges
         )
 
-    async def add_order(self, order):
-        self.active_order_book.append(order)
-        print("Added order:", order)
+    async def handle_add_order(self, order):
+        order_with_metadata = order.copy()
+        order_with_metadata['session_id'] = str(self.id)
+        order_with_metadata['timestamp'] = datetime.utcnow()
 
-    async def cancel_order(self, order):
+        self.active_order_book.append(order_with_metadata)
+        print("Added order:", order_with_metadata)
+
+    async def handle_cancel_order(self, order):
         self.active_order_book.remove(order)
         print("Cancelled order:", order)
 
-    async def update_book_status(self, order):
+    async def handle_update_book_status(self, order):
         print("Updated book status:", self.active_order_book)
+
+    async def handle_register_me(self, msg_body):
+        trader_id = msg_body.get('trader_id')
+        self.connected_traders[trader_id] = "Connected"
+        print(f"Trader {trader_id} connected.")
 
     async def on_individual_message(self, message):
         print("Received individual message:", message.body.decode())
         incoming_message = json.loads(message.body.decode())
-        action = incoming_message.get('action', None)
+        action = incoming_message.pop('action', None)
 
+        handler_method = getattr(self, f"handle_{action}", None)
         if action:
-            method = getattr(self, action, None)
-            if method:
-                await method(incoming_message)
+            if handler_method:
+                await handler_method(incoming_message)
             else:
-                print(f"Can't find such action: {action}")
+                print("Can't find such action.")
         else:
             print("No action specified in message.")
         await message.ack()
@@ -76,6 +87,7 @@ class Trader:
 
     async def connect_to_session(self, trading_session_uuid):
         self.trading_session_uuid = trading_session_uuid
+
         self.queue_name = f'trading_system_queue_{self.trading_session_uuid}'
 
         self.broadcast_exchange_name = f'broadcast_{self.trading_session_uuid}'
@@ -89,6 +101,15 @@ class Trader:
         # For individual messages
         self.trading_system_exchange = await self.channel.declare_exchange(self.queue_name,
                                                                            aio_pika.ExchangeType.DIRECT)
+        #     Register with the trading system
+        await self.register()
+
+    async def register(self):
+        message = {
+            'action': 'register_me',
+            'trader_id': str(self.id)
+        }
+        await self.send_to_trading_system(message)
 
     async def send_to_trading_system(self, message):
         await self.trading_system_exchange.publish(
@@ -105,17 +126,27 @@ async def main():
     await trading_system.initialize()
     trading_session_uuid = trading_system.id
     print(f"Trading session UUID: {trading_session_uuid}")
-    trader = Trader()
-    await trader.initialize()
-    await trader.connect_to_session(trading_session_uuid)
+    trader1 = Trader()
+    await trader1.initialize()
+    await trader1.connect_to_session(trading_session_uuid=trading_system.id)
+
+    # The trading_session.connected_traders should now have the trader1's id.
+    print(trading_system.connected_traders)
 
     await trading_system.send_broadcast({"content": "Market is open"})
     print('did we reach here?')
     await asyncio.sleep(5)  # Send a message every 5 seconds
-    await trader.send_to_trading_system({"action": "add_order", "symbol": "AAPL", "quantity": 1})
+    new_post = {
+        "action": "add_order",
+        "order_type": "ask",
+        "price": 100.25,
+        "trader_id": str(trader1.id)
+    }
+
+    await trader1.send_to_trading_system(new_post)
 
     await trading_system.connection.close()
-    await trader.connection.close()
+    await trader1.connection.close()
 
 
 if __name__ == "__main__":
