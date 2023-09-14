@@ -50,6 +50,7 @@ class TradingSystem:
             routing_key=f'trader_{trader_id}'
         )
     async def handle_add_order(self, order):
+        trader_id= order.get('trader_id')
         order_with_metadata = order.copy()
         order_with_metadata['session_id'] = str(self.id)
         order_with_metadata['timestamp'] = datetime.utcnow()
@@ -57,7 +58,7 @@ class TradingSystem:
         self.active_orders.append(order_with_metadata)
         logger.info(f"Added order: {json.dumps(order_with_metadata, indent=4, cls=CustomEncoder)}")
         updated_order_book = self.generate_order_book()
-        return dict(respond=True,  order_book=updated_order_book)
+        return dict(respond=True,  order_book=updated_order_book, outstanding_orders=self.get_outstanding_orders(trader_id))
     async def handle_cancel_order(self, order):
         self.active_orders.remove(order)
         logger.info(    "Cancelled order: {order}")
@@ -124,6 +125,20 @@ class TradingSystem:
 
         return order_book
 
+    def get_outstanding_orders(self, trader_id):
+        outstanding_orders = {'bid': defaultdict(int), 'ask': defaultdict(int)}
+
+        for order in self.active_orders:
+            if order['trader_id'] == trader_id:
+                order_type = order['order_type']
+                price = order['price']
+                outstanding_orders[order_type][price] += 1
+
+        # Convert defaultdict to regular dict for JSON serialization if needed
+        outstanding_orders['bid'] = dict(outstanding_orders['bid'])
+        outstanding_orders['ask'] = dict(outstanding_orders['ask'])
+
+        return outstanding_orders
 
 
 class Trader:
@@ -210,7 +225,7 @@ async def main():
             }
             await trader.send_to_trading_system(new_post)
             print(f"Sent post {_}: {json.dumps(new_post, indent=4)}")
-            await asyncio.sleep(random.uniform(0.5, 2.0))  # wait between 0.5 to 2 seconds before the next post
+            # await asyncio.sleep(random.uniform(0.5, 2.0))  # wait between 0.5 to 2 seconds before the next post
 
     await generate_random_posts(trader1)
     await trading_system.connection.close()
