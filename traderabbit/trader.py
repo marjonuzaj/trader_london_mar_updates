@@ -72,4 +72,32 @@ class Trader:
     async def on_message(self, message):
         logger.info(f"Trader {self.id} received message: {message.body.decode()}")
 
+    # async def post_new_order(self, amount, price, order_type: OrderType):
+    #     order_id = str(uuid.uuid4())
+    #     timestamp = datetime.utcnow().isoformat()
+    #
+    #     new_order = {
+    #         "id": order_id,
+    #         "amount": amount,
+    #         "price": price,
+    #         "status": OrderStatus.ACTIVE.value,
+    #         "timestamp": timestamp,
+    #         "order_type": order_type.value
+    #     }
+    #
+    #     self.orders[order_id] = new_order
+    #     logger.debug(f"Posted new {order_type.value.upper()} order: {new_order}")
+    #
+    #     # Here you could add code to send the new order to a RabbitMQ queue or other system
+    #
+    # async def cancel_order(self, order_id):
+    #     if order_id in self.orders:
+    #         self.orders[order_id]['status'] = OrderStatus.CANCELLED.value
+    #         logger.debug(f"Cancelled order: {order_id}")
+    #
+    #         # Here you could add code to send the cancellation to a RabbitMQ queue or other system
+    #     else:
+    #         logger.warning(f"Order ID {order_id} not found. Cannot cancel.")
+    #
+
 
