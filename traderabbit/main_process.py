@@ -37,11 +37,11 @@ async def main():
                 "trader_id": str(trader.id)
             }
             await trader.send_to_trading_system(new_post)
-            print(f"Sent post {_}: {json.dumps(new_post, indent=4)}")
+            logger.debug(f"Sent post {_}: {json.dumps(new_post, indent=4)}")
             # await asyncio.sleep(random.uniform(0.5, 2.0))  # wait between 0.5 to 2 seconds before the next post
 
     await generate_random_posts(trader1)
-    await asyncio.sleep(1)
+    await asyncio.sleep(1) # TODO: this is the UGLY FIX so we won't close the connection before the messages are sent. THINK ABOUT IT LATER
     await trading_system.connection.close()
     await trader1.connection.close()
 
