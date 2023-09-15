@@ -32,6 +32,7 @@ async def main():
         for _ in range(10):
             new_post = {
                 "action": "add_order",
+                "amount":1,
                 "order_type": random.choice(["ask", "bid"]),
                 "price": random.choice(range(100,110)),
                 "trader_id": str(trader.id)

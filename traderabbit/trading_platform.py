@@ -4,6 +4,8 @@ import uuid
 from datetime import datetime
 from traderabbit.utils import ack_message
 from traderabbit.custom_logger import setup_custom_logger
+from typing import List, Dict
+from structures import OrderStatus, OrderModel
 
 logger = setup_custom_logger(__name__)
 
@@ -14,7 +16,8 @@ from traderabbit.utils import CustomEncoder
 class TradingSystem:
     def __init__(self):
         self.id = uuid.uuid4()
-        self.active_orders = []
+        self.all_orders: Dict[uuid.UUID, Dict] = {}
+        self.active_orders: Dict[uuid.UUID, Dict] = {}
         self.broadcast_exchange_name = f'broadcast_{self.id}'
         self.queue_name = f'trading_system_queue_{self.id}'
         self.trader_exchange = None
@@ -46,19 +49,46 @@ class TradingSystem:
             routing_key=f'trader_{trader_id}'
         )
 
-    async def handle_add_order(self, order):
-        trader_id = order.get('trader_id')
-        order_with_metadata = order.copy()
-        order_with_metadata['session_id'] = str(self.id)
-        order_with_metadata['timestamp'] = datetime.utcnow()
-        order_with_metadata['order_id'] = str(uuid.uuid4())
-        self.active_orders.append(order_with_metadata)
+    def place_order(self, order_dict: Dict, trader_id: uuid.UUID):
+        """ This one is called by handle_add_order, and is the one that actually places the order in the system.
+        It adds automatically - we do all the validation (whether a trader allowed to place an order, etc) in the
+        handle_add_order method.
+        """
+        order_id = uuid.uuid4()
+        order_dict.update({
+            'id': order_id,
+            'status': OrderStatus.ACTIVE.value,
+            'timestamp': datetime.utcnow(),
+            'session_id': self.id,
+            'trader_id': trader_id
+        })
+        order = OrderModel(**order_dict)
+        self.all_orders[order_id] = order.model_dump()
+        self.active_orders[order_id] = order.model_dump()
+        return order
 
-        logger.info(f'Total active orders: {len(self.active_orders)}')
-        logger.info(f"Added order: {json.dumps(order_with_metadata, indent=4, cls=CustomEncoder)}")
-        updated_order_book = self.generate_order_book()
-        return dict(respond=True, order_book=updated_order_book,
-                    outstanding_orders=self.get_outstanding_orders(trader_id))
+    def fulfill_order(self, order_id: uuid.UUID):
+        if order_id in self.active_orders:
+            self.active_orders[order_id]['status'] = OrderStatus.FULFILLED.value
+            del self.active_orders[order_id]
+
+    def cancel_order(self, order_id: uuid.UUID):
+        if order_id in self.active_orders:
+            self.active_orders[order_id]['status'] = OrderStatus.CANCELLED.value
+            del self.active_orders[order_id]
+
+    async def handle_add_order(self, order):
+        # TODO: Validate the order
+        trader_id = order.get('trader_id')
+        clean_order = dict(amount=order.get('amount'), price=order.get('price'), order_type=order.get('order_type'))
+        resp = self.place_order(clean_order, trader_id)
+        if resp:
+            logger.info(f'Total active orders: {len(self.active_orders)}')
+            logger.info(f"Added order: {json.dumps(resp, indent=4, cls=CustomEncoder)}")
+
+        # updated_order_book = self.generate_order_book()
+        # return dict(respond=True, order_book=updated_order_book,
+        #             outstanding_orders=self.get_outstanding_orders(trader_id))
 
     async def handle_cancel_order(self, order):
         self.active_orders.remove(order)
