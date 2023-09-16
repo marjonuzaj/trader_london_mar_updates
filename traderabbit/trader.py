@@ -37,8 +37,10 @@ class Trader:
             # Close the channel and connection
             if self.channel:
                 await self.channel.close()
+                logger.info(f"Trader {self.id} channel closed")
             if self.connection:
                 await self.connection.close()
+                logger.info(f"Trader {self.id} connection closed")
 
         except Exception as e:
             print(f"An error occurred during Trader cleanup: {e}")
