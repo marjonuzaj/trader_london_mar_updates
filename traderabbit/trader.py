@@ -30,7 +30,20 @@ class Trader:
     async def initialize(self):
         self.connection = await aio_pika.connect_robust("amqp://localhost")
         self.channel = await self.connection.channel()
-        await self.channel.declare_queue(self.trader_queue_name)
+        await self.channel.declare_queue(self.trader_queue_name, auto_delete=True)
+
+    async def clean_up(self):
+        try:
+            # Close the channel and connection
+            if self.channel:
+                await self.channel.close()
+            if self.connection:
+                await self.connection.close()
+
+        except Exception as e:
+            print(f"An error occurred during Trader cleanup: {e}")
+
+
 
     async def connect_to_session(self, trading_session_uuid):
         self.trading_session_uuid = trading_session_uuid
@@ -41,16 +54,20 @@ class Trader:
 
         # Subscribe to group messages
         broadcast_exchange = await self.channel.declare_exchange(self.broadcast_exchange_name,
-                                                                 aio_pika.ExchangeType.FANOUT)
+                                                                 aio_pika.ExchangeType.FANOUT,
+                                                                 auto_delete=True)
         broadcast_queue = await self.channel.declare_queue("", auto_delete=True)
         await broadcast_queue.bind(broadcast_exchange)
         await broadcast_queue.consume(self.on_message)
 
         # For individual messages
         self.trading_system_exchange = await self.channel.declare_exchange(self.queue_name,
-                                                                           aio_pika.ExchangeType.DIRECT)
+                                                                           aio_pika.ExchangeType.DIRECT,
+                                                                           auto_delete=True)
         trader_queue = await self.channel.declare_queue(
-            self.trader_queue_name)  # Declare a unique queue for this Trader
+            self.trader_queue_name,
+            auto_delete=True
+        )  # Declare a unique queue for this Trader
         await trader_queue.bind(self.trading_system_exchange, routing_key=self.trader_queue_name)
         await trader_queue.consume(self.on_message)  # Assuming you have a method named on_message
 
