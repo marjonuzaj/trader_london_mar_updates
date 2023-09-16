@@ -2,15 +2,16 @@ import asyncio
 import aio_pika
 import json
 import uuid
+import random
+from structures.structures import OrderModel, OrderStatus, OrderType
 from datetime import datetime
 from traderabbit.utils import ack_message
 from traderabbit.custom_logger import setup_custom_logger
 
 logger = setup_custom_logger(__name__)
 
-import random
-from collections import defaultdict
-from traderabbit.utils import CustomEncoder
+
+
 
 
 class Trader:
@@ -58,12 +59,13 @@ class Trader:
     async def register(self):
         message = {
             'action': 'register_me',
-            'trader_id': str(self.id)
         }
 
         await self.send_to_trading_system(message)
 
     async def send_to_trading_system(self, message):
+        # we add to any message the trader_id
+        message['trader_id'] = str(self.id)
         await self.trading_system_exchange.publish(
             aio_pika.Message(body=json.dumps(message).encode()),
             routing_key=self.queue_name  # Use the dynamic queue_name
@@ -72,24 +74,29 @@ class Trader:
     async def on_message(self, message):
         logger.info(f"Trader {self.id} received message: {message.body.decode()}")
 
-    # async def post_new_order(self, amount, price, order_type: OrderType):
-    #     order_id = str(uuid.uuid4())
-    #     timestamp = datetime.utcnow().isoformat()
-    #
-    #     new_order = {
-    #         "id": order_id,
-    #         "amount": amount,
-    #         "price": price,
-    #         "status": OrderStatus.ACTIVE.value,
-    #         "timestamp": timestamp,
-    #         "order_type": order_type.value
-    #     }
-    #
-    #     self.orders[order_id] = new_order
-    #     logger.debug(f"Posted new {order_type.value.upper()} order: {new_order}")
-    #
-    #     # Here you could add code to send the new order to a RabbitMQ queue or other system
-    #
+    async def post_new_order(self, amount, price, order_type: OrderType):
+        # todo: here we should call a generating function passing there the current book state etc,
+        # and it will return price, amount, order_type
+
+        # TODO: all the following should be removed, it's now only for generating some prices for bids and asks
+        order_type= random.choice([OrderType.ASK, OrderType.BID])
+        if order_type == OrderType.ASK:
+            price = random.choice([1, 2, 3, 4, 5])
+        else:
+            price = random.choice([5, 6, 7, 8, 9])
+
+        new_order = {
+
+            "amount": 1,
+            "price": price,
+            "order_type": order_type.value,
+        }
+
+        resp = await self.send_to_trading_system(new_order)
+        logger.debug(f"Trader {self.id} posted new {order_type.value.upper()} order: {new_order}")
+
+
+
     # async def cancel_order(self, order_id):
     #     if order_id in self.orders:
     #         self.orders[order_id]['status'] = OrderStatus.CANCELLED.value
