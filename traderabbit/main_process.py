@@ -29,16 +29,8 @@ async def main():
 
     await trading_system.send_message_to_trader(trader1.id, {"content": "Welcome to the market"})
     async def generate_random_posts(trader):
-        for _ in range(10):
-            new_post = {
-                "action": "add_order",
-                "amount":1,
-                "order_type": random.choice(["ask", "bid"]),
-                "price": random.choice(range(100,110)),
-                "trader_id": str(trader.id)
-            }
-            await trader.send_to_trading_system(new_post)
-            logger.debug(f"Sent post {_}: {json.dumps(new_post, indent=4)}")
+        for i in range(10):
+            await trader.post_new_order()
             # await asyncio.sleep(random.uniform(0.5, 2.0))  # wait between 0.5 to 2 seconds before the next post
 
     await generate_random_posts(trader1)

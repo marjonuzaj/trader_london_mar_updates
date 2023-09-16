@@ -3,7 +3,7 @@ import aio_pika
 import json
 import uuid
 import random
-from structures.structures import OrderModel, OrderStatus, OrderType
+from structures.structures import OrderModel, OrderStatus, OrderType, ActionType
 from datetime import datetime
 from traderabbit.utils import ack_message
 from traderabbit.custom_logger import setup_custom_logger
@@ -58,7 +58,7 @@ class Trader:
 
     async def register(self):
         message = {
-            'action': 'register_me',
+            'action': ActionType.REGISTER.value,
         }
 
         await self.send_to_trading_system(message)
@@ -74,7 +74,9 @@ class Trader:
     async def on_message(self, message):
         logger.info(f"Trader {self.id} received message: {message.body.decode()}")
 
-    async def post_new_order(self, amount, price, order_type: OrderType):
+    async def post_new_order(self,
+                             # amount, price, order_type: OrderType
+                             ):
         # todo: here we should call a generating function passing there the current book state etc,
         # and it will return price, amount, order_type
 
@@ -86,7 +88,7 @@ class Trader:
             price = random.choice([5, 6, 7, 8, 9])
 
         new_order = {
-
+            "action": ActionType.POST_NEW_ORDER.value,
             "amount": 1,
             "price": price,
             "order_type": order_type.value,
