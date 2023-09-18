@@ -18,8 +18,11 @@ logger = setup_custom_logger(__name__)
 class TradingSystem:
     transactions = List[TransactionModel]
     all_orders = Dict[uuid.UUID, Dict]
-    active_orders = Dict[uuid.UUID, Dict]
+
     buffered_orders = Dict[uuid.UUID, Dict]
+    @property
+    def active_orders(self):
+        return {k: v for k, v in self.all_orders.items() if v['status'] == OrderStatus.ACTIVE}
 
     def __init__(self, buffer_delay=5):
         """
@@ -28,7 +31,6 @@ class TradingSystem:
         # self.id = uuid.uuid4()
         self.id = "1234"  # for testing purposes
         self.all_orders = {}
-        self.active_orders = {}
         self.buffered_orders = {}
         self.transactions = []
         self.broadcast_exchange_name = f'broadcast_{self.id}'
@@ -78,13 +80,13 @@ class TradingSystem:
     async def send_broadcast(self, message):
         exchange = await self.channel.get_exchange(self.broadcast_exchange_name)
         await exchange.publish(
-            aio_pika.Message(body=json.dumps(message).encode()),
+            aio_pika.Message(body=json.dumps(message, cls=CustomEncoder).encode()),
             routing_key=''  # routing_key is typically ignored in FANOUT exchanges
         )
 
     async def send_message_to_trader(self, trader_id, message):
         await self.trader_exchange.publish(
-            aio_pika.Message(body=json.dumps(message).encode()),
+            aio_pika.Message(body=json.dumps(message, cls=CustomEncoder).encode()),
             routing_key=f'trader_{trader_id}'
         )
 
@@ -98,18 +100,11 @@ class TradingSystem:
             'status': OrderStatus.ACTIVE.value,
         })
         self.all_orders[order_id] = order_dict
-        self.active_orders[order_id] = order_dict
+
         return order_dict
 
-    def fulfill_order(self, order_id: uuid.UUID):
-        if order_id in self.active_orders:
-            self.active_orders[order_id]['status'] = OrderStatus.FULFILLED.value
-            del self.active_orders[order_id]
 
-    def cancel_order(self, order_id: uuid.UUID):
-        if order_id in self.active_orders:
-            self.active_orders[order_id]['status'] = OrderStatus.CANCELLED.value
-            del self.active_orders[order_id]
+
 
     async def add_order_to_buffer(self, order):
         async with self.lock:
@@ -122,7 +117,11 @@ class TradingSystem:
 
             if self.release_task is None:
                 self.release_task = asyncio.create_task(self.release_buffered_orders())
-
+            return dict(message="Order added to buffer", order=order)
+    @property
+    def list_active_orders(self):
+        """ Returns a list of all active orders. When we switch to real DB or mongo, we won't need it anymore."""
+        return list(self.active_orders.values())
     async def release_buffered_orders(self):
         sleep_task = asyncio.create_task(asyncio.sleep(self.buffer_delay))
         release_event_task = asyncio.create_task(self.release_event.wait())
@@ -145,6 +144,9 @@ class TradingSystem:
 
             self.release_task = None  # Reset the task so it can be recreated
             self.release_event.clear()  # Reset the event
+            # TODO: let's think about the depth of the order book to send; and also do we need all transactions??
+            await self.send_broadcast(message=dict(message="Buffer released", orders=self.list_active_orders,
+                                                   ))
 
     async def clear_orders(self):
         logger.info(f'Total amount of active orders: {len(self.active_orders)}')
@@ -169,7 +171,8 @@ class TradingSystem:
 
         # Check if any transactions are possible
         if spread < 0:
-            logger.info(f"No overlapping orders. Spread is negative: {spread}. Lowest ask: {lowest_ask}, highest bid: {highest_bid}")
+            logger.info(
+                f"No overlapping orders. Spread is negative: {spread}. Lowest ask: {lowest_ask}, highest bid: {highest_bid}")
 
             return
         logger.info(f"Spread: {spread}")
@@ -203,9 +206,7 @@ class TradingSystem:
 
             to_remove.extend([ask['id'], bid['id']])
 
-        # Remove cleared orders from active_orders
-        for order_id in to_remove:
-            self.active_orders.pop(order_id, None)
+
 
         # Add transactions to self.transactions
         self.transactions.extend(transactions)
@@ -214,15 +215,16 @@ class TradingSystem:
         logger.info(f"Cleared {len(to_remove)} orders.")
         logger.info(f"Created {len(transactions)} transactions.")
 
-    async def handle_add_order(self, order):
+
+    async def handle_add_order(self, data: dict):
         # TODO: Validate the order
-        trader_id = order.get('trader_id')
+        trader_id = data.get('trader_id')
         clean_order = {
             'id': uuid.uuid4(),
             'status': OrderStatus.BUFFERED.value,
-            'amount': order.get('amount'),
-            'price': order.get('price'),
-            'order_type': order.get('order_type'),
+            'amount': data.get('amount'),
+            'price': data.get('price'),
+            'order_type': data.get('order_type'),
             'timestamp': datetime.utcnow(),
             # we add the timestamp here but when we release an order out of the buffer we set a common tiestmap for them that points to the release time.
             'session_id': self.id,
@@ -231,15 +233,39 @@ class TradingSystem:
         resp = await self.add_order_to_buffer(clean_order)
         if resp:
             logger.info(f'Total active orders: {len(self.active_orders)}')
-            logger.info(f"Added order: {json.dumps(resp, indent=4, cls=CustomEncoder)}")
 
-        # updated_order_book = self.generate_order_book()
-        # return dict(respond=True, order_book=updated_order_book,
-        #             outstanding_orders=self.get_outstanding_orders(trader_id))
 
-    async def handle_cancel_order(self, order):
-        self.active_orders.remove(order)
-        logger.info("Cancelled order: {order}")
+        return dict(respond=True, data=resp)
+
+    async def handle_cancel_order(self, data: dict):
+        order_id = data.get('order_id')
+        trader_id = data.get('trader_id')
+        # we lock here to guarantee that no transactions are happening while we are canceling the order
+        async with self.lock:
+            order_id=uuid.UUID(order_id)
+            # TODO: we don't need this condition when we get rid of active orders
+
+            if order_id not in self.active_orders:
+
+                return {"status": "failed", "reason": "Order not found"}
+            existing_order = self.active_orders[order_id]
+            if existing_order['trader_id'] != trader_id:
+                logger.warning(f"Trader {trader_id} does not own order {order_id}.")
+                return {"status": "failed", "reason": "Trader does not own the order"}
+
+            if existing_order['status'] != OrderStatus.ACTIVE.value:
+                logger.warning(f"Order {order_id} is not active and cannot be canceled.")
+                return {"status": "failed", "reason": "Order is not active"}
+
+            # If we've made it here, the order can be canceled
+
+            self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
+
+
+            logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
+            this_trader_orders = [order for order in self.active_orders.values() if order['trader_id'] == trader_id]
+
+            return {"status": "cancel success", "orders": this_trader_orders, "respond": True}
 
     async def handle_update_book_status(self, order):
         "This one returns the most recent book to the trader who requested it."

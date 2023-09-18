@@ -5,6 +5,10 @@ import aio_pika
 from enum import Enum
 from uuid import UUID
 from structures.structures import OrderModel
+from collections import defaultdict
+from typing import List, Dict
+import numpy as np
+
 class CustomEncoder(JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
@@ -56,4 +60,103 @@ def ack_message(func):
     async def wrapper(self, message: aio_pika.IncomingMessage):
         await func(self, message)
         await message.ack()
+
     return wrapper
+
+
+def convert_to_book_format(active_orders, levels_n=10, default_price=2000):
+    # Initialize empty book and indices
+    book = defaultdict(list)
+    ind_ask_price = []
+    ind_ask_size = []
+    ind_bid_price = []
+    ind_bid_size = []
+
+    # Populate the book from active orders
+    for order in active_orders:
+        price = order['price']
+        size = order['amount']
+        order_type = order['order_type']
+
+        if order_type == 'ask':
+            ind_ask_price.append(price)
+            ind_ask_size.append(size)
+        elif order_type == 'bid':
+            ind_bid_price.append(price)
+            ind_bid_size.append(size)
+
+    # Sort the prices and sizes
+    sorted_ask_indices = sorted(range(len(ind_ask_price)), key=lambda k: ind_ask_price[k])
+    sorted_bid_indices = sorted(range(len(ind_bid_price)), key=lambda k: ind_bid_price[k], reverse=True)
+
+    ind_ask_price = [ind_ask_price[i] for i in sorted_ask_indices]
+    ind_ask_size = [ind_ask_size[i] for i in sorted_ask_indices]
+    ind_bid_price = [ind_bid_price[i] for i in sorted_bid_indices]
+    ind_bid_size = [ind_bid_size[i] for i in sorted_bid_indices]
+
+    # Fill to ensure minimum depth (levels_n)
+    while len(ind_ask_price) < levels_n:
+        ind_ask_price.append(default_price + len(ind_ask_price) + 1)
+        ind_ask_size.append(0)
+
+    while len(ind_bid_price) < levels_n:
+        ind_bid_price.append(default_price - (levels_n - len(ind_bid_price)))
+        ind_bid_size.append(0)
+
+    # Create a numpy array for the book
+    book_with_depth = np.zeros(4 * levels_n)
+    book_with_depth[::4] = ind_ask_price[:levels_n]
+    book_with_depth[1::4] = ind_ask_size[:levels_n]
+    book_with_depth[2::4] = ind_bid_price[:levels_n]
+    book_with_depth[3::4] = ind_bid_size[:levels_n]
+
+    return book_with_depth
+
+
+
+
+
+
+def convert_to_noise_state(active_orders: List[Dict]) -> Dict:
+    noise_state = {
+        'outstanding_orders': {
+            'bid': defaultdict(int),
+            'ask': defaultdict(int)
+        }
+    }
+
+    for order in active_orders:
+        if order['status'] == 'active':
+            order_type = order['order_type']
+            price = order['price']
+            amount = order['amount']
+            noise_state['outstanding_orders'][order_type][price] += amount
+
+    # Convert defaultdicts to regular dicts for easier use later
+    noise_state['outstanding_orders']['bid'] = dict(noise_state['outstanding_orders']['bid'])
+    noise_state['outstanding_orders']['ask'] = dict(noise_state['outstanding_orders']['ask'])
+
+    return noise_state
+
+def convert_to_trader_actions(response_dict):
+    actions = []
+
+    for order_type, order_details in response_dict.items():
+        for price, size_list in order_details.items():
+            size = size_list[0]
+            action = {}
+            if size > 0:
+                action['action_type'] = 'place_order'
+                action['order_type'] = order_type
+                action['price'] = price
+                action['amount'] = size
+            elif size < 0:
+                action['action_type'] = 'cancel_order'
+                action['order_type'] = order_type
+                action['price'] = price
+            if action:
+                actions.append(action)
+
+    return actions
+
+

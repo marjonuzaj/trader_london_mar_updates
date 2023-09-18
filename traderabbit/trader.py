@@ -3,20 +3,22 @@ import aio_pika
 import json
 import uuid
 import random
-from structures.structures import OrderModel, OrderStatus, OrderType, ActionType
+from structures.structures import OrderModel, OrderStatus, OrderType, ActionType, TransactionModel
 from datetime import datetime
-from traderabbit.utils import ack_message
+from traderabbit.utils import ack_message, convert_to_noise_state, convert_to_book_format, convert_to_trader_actions
 from traderabbit.custom_logger import setup_custom_logger
-
+from pprint import pprint
+from traders.noise_trader import get_noise_rule, get_signal_noise, settings_noise, settings
+import numpy as np
 logger = setup_custom_logger(__name__)
 
 
-
-
-
 class Trader:
+    orders = []
+    transactions = []
+
     def __init__(self):
-        self.id = uuid.uuid4()
+        self.id = str(uuid.uuid4())
         print(f"Trader created with UUID: {self.id}")
         self.connection = None
         self.channel = None
@@ -44,8 +46,6 @@ class Trader:
 
         except Exception as e:
             print(f"An error occurred during Trader cleanup: {e}")
-
-
 
     async def connect_to_session(self, trading_session_uuid):
         self.trading_session_uuid = trading_session_uuid
@@ -89,9 +89,21 @@ class Trader:
             aio_pika.Message(body=json.dumps(message).encode()),
             routing_key=self.queue_name  # Use the dynamic queue_name
         )
+
     @ack_message
     async def on_message(self, message):
-        logger.info(f"Trader {self.id} received message: {message.body.decode()}")
+        """This method is called whenever a message is received by the Trader"""
+
+        resp = json.loads(message.body.decode())
+        # logger.info(f"Trader {self.id} received message: {resp}")
+        #     # TODO: the following two lines are currently some artefacts, they should be removed later.
+        #     # currently we broadcast the updated active orders and transactions to all traders.
+        #     # in the future we should only broadcast the updated order book and let the traders decide
+        #     # because now it is totally deanonymized; it is a bad idea to broadcast all the orders and transactions
+
+        if resp.get('orders'):
+            self.orders = self.get_my_orders(resp['orders'])
+            self.generate_noise_orders(resp['orders'])
 
     async def post_new_order(self,
                              # amount, price, order_type: OrderType
@@ -100,11 +112,12 @@ class Trader:
         # and it will return price, amount, order_type
 
         # TODO: all the following should be removed, it's now only for generating some prices for bids and asks
-        order_type= random.choice([OrderType.ASK, OrderType.BID])
+        order_type = random.choice([OrderType.ASK, OrderType.BID])
+        START_PRICE  =2000 # TODO: REMOVE LATER OR MOVE TO SETTINGS
         if order_type == OrderType.ASK:
-            price = random.choice([1, 2, 3, 4, 5])
+            price = int(random.choice(np.linspace(START_PRICE-50, START_PRICE + 50, 100)))
         else:
-            price = random.choice([2, 3, 4, 5, 6])
+            price = int(random.choice(np.linspace(START_PRICE-50, START_PRICE + 50, 100)))
 
         new_order = {
             "action": ActionType.POST_NEW_ORDER.value,
@@ -114,18 +127,46 @@ class Trader:
         }
 
         resp = await self.send_to_trading_system(new_order)
+        logger.info(f"Trader {self.id} gets the response: {resp}")
         logger.debug(f"Trader {self.id} posted new {order_type.value.upper()} order: {new_order}")
 
+    def get_my_transactions(self, transactions):
+        """filter full transactions to get only mine"""
+        return [transaction for transaction in transactions if transaction['trader_id'] == self.id]
+
+    def get_my_orders(self, orders):
+        """filter full orders to get only mine.
+        TODO: we won't need it if/when TS will send only my orders to me"""
+
+        return [order for order in orders if order['trader_id'] == self.id]
+
+    async def send_cancel_order_request(self, order_id: uuid.UUID):
+        cancel_order_request = {
+            "action": ActionType.CANCEL_ORDER.value,  # Assuming you have an ActionType Enum
+            "trader_id": self.id,
+            "order_id": order_id
+        }
+
+        response = await self.send_to_trading_system(cancel_order_request)
+        # TODO: deal with response if needed (what if order is already cancelled? what is a part of transaction?
+        #  what if order is not found? what if order is not yours?)
+        logger.info(f"Trader {self.id} sent cancel order request: {cancel_order_request}")
+
+    def generate_noise_orders(self, all_active_orders):
+        # Convert the active orders to the book format understood by get_noise_rule
+        book_format = convert_to_book_format(all_active_orders)
+
+        #
+        # # Convert the trader's state to the noise_state format
+        noise_state = convert_to_noise_state(self.orders)  # Assuming you have this method
+        #
+        # # Get the noise signal
+        signal_noise = get_signal_noise(signal_state=None, settings_noise=settings_noise)
+        #
+        # # Generate noise orders
+        noise_orders = get_noise_rule(book_format, signal_noise, noise_state, settings_noise, settings)
+        converted_noise_orders = convert_to_trader_actions(noise_orders)
+        logger.critical(converted_noise_orders)
 
 
-    # async def cancel_order(self, order_id):
-    #     if order_id in self.orders:
-    #         self.orders[order_id]['status'] = OrderStatus.CANCELLED.value
-    #         logger.debug(f"Cancelled order: {order_id}")
-    #
-    #         # Here you could add code to send the cancellation to a RabbitMQ queue or other system
-    #     else:
-    #         logger.warning(f"Order ID {order_id} not found. Cannot cancel.")
-    #
-
-
+        # return noise_orders

@@ -3,7 +3,7 @@
 from termcolor import colored
 import logging
 import os
-
+CUR_LEVEL = logging.WARNING
 class CustomFormatter(logging.Formatter):
     COLORS = {
         'WARNING': 'yellow',
@@ -24,15 +24,15 @@ def setup_custom_logger(name, log_directory="logs"):
         os.makedirs(log_directory)
 
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(CUR_LEVEL)
 
     # Console Handler
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+    ch.setLevel(CUR_LEVEL)
 
     # File Handler
     fh = logging.FileHandler(os.path.join(log_directory, f"{name}.log"))
-    fh.setLevel(logging.DEBUG)
+    fh.setLevel(CUR_LEVEL)
 
     formatter = CustomFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
