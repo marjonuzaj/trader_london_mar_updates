@@ -11,31 +11,38 @@ logger = setup_custom_logger(__name__)
 async def generate_random_posts(trader):
     while True:
         await trader.post_new_order()
-        await asyncio.sleep(random.uniform(2, 5))  # Wait between 2 to 5 seconds before posting the next order
+        await asyncio.sleep(random.uniform(1, 3))  # Wait between 2 to 5 seconds before posting the next order
 
 
-async def main(trading_system, trader1):
+async def main(trading_system, traders):
     await trading_system.initialize()
     trading_session_uuid = trading_system.id
     logger.info(f"Trading session UUID: {trading_session_uuid}")
+    for i in traders:
+        await i.initialize()
+        await i.connect_to_session(trading_session_uuid=trading_session_uuid)
+        print('$$$$$$$$$$$$$$', i.id)
 
-    await trader1.initialize()
-    await trader1.connect_to_session(trading_session_uuid=trading_system.id)
+    # await trader1.initialize()
+    # await trader1.connect_to_session(trading_session_uuid=trading_system.id)
 
-    print(trading_system.connected_traders)
+
 
     await trading_system.send_broadcast({"content": "Market is open"})
-    await trading_system.send_message_to_trader(trader1.id, {"content": "Welcome to the market"})
+    trader_tasks= []
+    for i in traders:
+        trader_tasks.append(asyncio.create_task(generate_random_posts(i)))
 
-    trader_task = asyncio.create_task(generate_random_posts(trader1))
+
     trading_system_task = asyncio.create_task(trading_system.run())  # Assume this method exists
 
-    await asyncio.gather(trader_task, trading_system_task)
+    await asyncio.gather(trading_system_task, *trader_tasks)
 
 
-async def async_handle_exit(trading_system, trader1, loop):
+async def async_handle_exit(trading_system, traders, loop):
     await trading_system.clean_up()
-    await trader1.clean_up()
+    for i in traders:
+        await i.clean_up()
 
     # Cancel all running tasks
     for task in asyncio.all_tasks(loop=loop):
@@ -48,18 +55,21 @@ async def async_handle_exit(trading_system, trader1, loop):
 
     loop.stop()
 
-def handle_exit(loop, trading_system, trader1):
-    loop.create_task(async_handle_exit(trading_system, trader1, loop))
+def handle_exit(loop, trading_system, traders):
+    loop.create_task(async_handle_exit(trading_system, traders, loop))
 
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    trading_system = TradingSystem()
+    trading_system = TradingSystem(buffer_delay=5)
     trader1 = Trader()
+    trader2 = Trader()
+    trader3 = Trader()
+    traders = [trader1, trader2, trader3]
 
     # Add the signal handler for Ctrl+C and SIGTERM
-    signal.signal(signal.SIGINT, lambda *args: handle_exit(loop, trading_system, trader1))
-    signal.signal(signal.SIGTERM, lambda *args: handle_exit(loop, trading_system, trader1))
+    signal.signal(signal.SIGINT, lambda *args: handle_exit(loop, trading_system, traders))
+    signal.signal(signal.SIGTERM, lambda *args: handle_exit(loop, trading_system, traders))
 
-    loop.run_until_complete(main(trading_system, trader1))  # Your main async function
+    loop.run_until_complete(main(trading_system, traders))  # Your main async function
 

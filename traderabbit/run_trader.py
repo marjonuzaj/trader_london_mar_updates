@@ -10,7 +10,8 @@ logger = setup_custom_logger(__name__)
 async def generate_random_posts(trader):
     while True:
         await trader.post_new_order()
-        await asyncio.sleep(random.uniform(2, 5))  # Wait between 2 to 5 seconds before posting the next order
+        await asyncio.sleep(1) # LEt's post them every second. TODO: REMOVE THIS
+        # await asyncio.sleep(random.uniform(2, 5))  # Wait between 2 to 5 seconds before posting the next order
 
 async def run_trader(platform_id):
     trader = Trader()

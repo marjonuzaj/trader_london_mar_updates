@@ -104,7 +104,7 @@ class Trader:
         if order_type == OrderType.ASK:
             price = random.choice([1, 2, 3, 4, 5])
         else:
-            price = random.choice([5, 6, 7, 8, 9])
+            price = random.choice([2, 3, 4, 5, 6])
 
         new_order = {
             "action": ActionType.POST_NEW_ORDER.value,
