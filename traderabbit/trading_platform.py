@@ -67,7 +67,7 @@ class TradingSystem:
             logger.info(f"Trading System {self.id} channel closed")
             await self.connection.close()
             logger.info(f"Trading System {self.id} connection closed")
-        #     dump transactions and orders to files
+            #     dump transactions and orders to files
             await dump_transactions_to_csv(self.transactions, f'transactions_{self.id}.csv')
 
             # Dump all_orders to CSV
@@ -136,8 +136,6 @@ class TradingSystem:
 
             for trader_id, order_dict in self.buffered_orders.items():
                 order_dict['timestamp'] = common_timestamp
-                pprint(order_dict, indent=4)
-                print('*' * 100)
 
                 self.place_order(order_dict, trader_id)
 
@@ -149,49 +147,72 @@ class TradingSystem:
             self.release_event.clear()  # Reset the event
 
     async def clear_orders(self):
-
+        logger.info(f'Total amount of active orders: {len(self.active_orders)}')
         # Separate active orders into asks and bids
         asks = [order for order in self.active_orders.values() if order['order_type'] == OrderType.ASK.value]
         bids = [order for order in self.active_orders.values() if order['order_type'] == OrderType.BID.value]
-        pprint(asks)
-        pprint(bids)
-        pprint(self.active_orders.values(), indent=4)
-        # Sort by price (lowest first for asks, highest first for bids)
-        asks = sorted(asks, key=lambda x: (x['timestamp'], x['price']))
-        bids = sorted(bids, key=lambda x: (x['timestamp'], -x['price']))
 
+        # Sort by price (lowest first for asks), and then by timestamp (oldest first - FIFO)
+        # TODO: remember that this is FIFO. We need to adjust the rule (or make it adjustable in the config) if we want
+        asks.sort(key=lambda x: (x['price'], x['timestamp']))
+        # Sort by price (highest first for bids), and then by timestamp (oldest first)
+        bids.sort(key=lambda x: (-x['price'], x['timestamp']))
+
+        # Calculate the spread
+        if asks and bids:
+            lowest_ask = asks[0]['price']
+            highest_bid = bids[0]['price']
+            spread = highest_bid - lowest_ask
+        else:
+            logger.info("No overlapping orders.")
+            return
+
+        # Check if any transactions are possible
+        if spread < 0:
+            logger.info(f"No overlapping orders. Spread is negative: {spread}. Lowest ask: {lowest_ask}, highest bid: {highest_bid}")
+
+            return
+        logger.info(f"Spread: {spread}")
+        # Filter the bids and asks that could be involved in a transaction
+        viable_asks = [ask for ask in asks if ask['price'] <= highest_bid]
+        viable_bids = [bid for bid in bids if bid['price'] >= lowest_ask]
+        logger.info(f'Viable asks: {len(viable_asks)}')
+        logger.info(f'Viable bids: {len(viable_bids)}')
         to_remove = []
+        transactions = []
 
-        # Loop through asks and bids to find matches
-        for ask in asks:
-            for bid in bids:
-                if ask['price'] <= bid['price']:
-                    # We have a match, clear these orders
-                    to_remove.append(ask['id'])
-                    to_remove.append(bid['id'])
-                    # Create a transaction
-                    transaction_price = (ask['price'] + bid['price']) / 2  # Mid-price
-                    transaction = TransactionModel(
-                        id=uuid.uuid4(),
-                        bid_order_id=bid['id'],
-                        ask_order_id=ask['id'],
-                        timestamp=datetime.utcnow(),  # Or whichever timestamp you want to use
-                        price=transaction_price
-                    )
+        # Create transactions
+        while viable_asks and viable_bids:
+            ask = viable_asks.pop(0)
+            bid = viable_bids.pop(0)
 
-                    self.transactions.append(transaction)
-                    logger.info(f"Transaction created: {transaction.model_dump()}")
-                    print('*' * 100)
-                    print(f'Total number of transactions: {len(self.transactions)}')
-                    break
+            # Change the status to 'FULFILLED' in the all_orders dictionary
+            self.all_orders[ask['id']]['status'] = OrderStatus.FULFILLED.value
+            self.all_orders[bid['id']]['status'] = OrderStatus.FULFILLED.value
+
+            # Create a transaction
+            transaction_price = (ask['price'] + bid['price']) / 2  # Mid-price
+            transaction = TransactionModel(
+                id=uuid.uuid4(),
+                bid_order_id=bid['id'],
+                ask_order_id=ask['id'],
+                timestamp=datetime.utcnow(),
+                price=transaction_price
+            )
+            transactions.append(transaction.model_dump())
+
+            to_remove.extend([ask['id'], bid['id']])
 
         # Remove cleared orders from active_orders
         for order_id in to_remove:
             self.active_orders.pop(order_id, None)
 
-        # Log the number of cleared orders
+        # Add transactions to self.transactions
+        self.transactions.extend(transactions)
+
+        # Log the number of cleared and transacted orders
         logger.info(f"Cleared {len(to_remove)} orders.")
-        logger.info(f'Current number of active orders: {len(self.active_orders)}')
+        logger.info(f"Created {len(transactions)} transactions.")
 
     async def handle_add_order(self, order):
         # TODO: Validate the order
