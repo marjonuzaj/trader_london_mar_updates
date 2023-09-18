@@ -10,11 +10,13 @@ from traderabbit.custom_logger import setup_custom_logger
 from pprint import pprint
 from traders.noise_trader import get_noise_rule, get_signal_noise, settings_noise, settings
 import numpy as np
+
 logger = setup_custom_logger(__name__)
 
 
 class Trader:
     orders = []
+    all_orders = []
     transactions = []
 
     def __init__(self):
@@ -102,33 +104,34 @@ class Trader:
         #     # because now it is totally deanonymized; it is a bad idea to broadcast all the orders and transactions
 
         if resp.get('orders'):
-            self.orders = self.get_my_orders(resp['orders'])
-            self.generate_noise_orders(resp['orders'])
+            self.all_orders = resp.get('orders')
+            self.orders = self.get_my_orders(self.all_orders)
+
+    async def request_order_book(self):
+        message = {
+            "action": ActionType.UPDATE_BOOK_STATUS.value,
+        }
+
+        await self.send_to_trading_system(message)
 
     async def post_new_order(self,
-                             # amount, price, order_type: OrderType
+                             amount, price, order_type: OrderType
                              ):
         # todo: here we should call a generating function passing there the current book state etc,
         # and it will return price, amount, order_type
 
         # TODO: all the following should be removed, it's now only for generating some prices for bids and asks
-        order_type = random.choice([OrderType.ASK, OrderType.BID])
-        START_PRICE  =2000 # TODO: REMOVE LATER OR MOVE TO SETTINGS
-        if order_type == OrderType.ASK:
-            price = int(random.choice(np.linspace(START_PRICE-50, START_PRICE + 50, 100)))
-        else:
-            price = int(random.choice(np.linspace(START_PRICE-50, START_PRICE + 50, 100)))
 
         new_order = {
             "action": ActionType.POST_NEW_ORDER.value,
-            "amount": 1,
+            "amount": amount,
             "price": price,
-            "order_type": order_type.value,
+            "order_type": order_type
         }
 
         resp = await self.send_to_trading_system(new_order)
         logger.info(f"Trader {self.id} gets the response: {resp}")
-        logger.debug(f"Trader {self.id} posted new {order_type.value.upper()} order: {new_order}")
+        logger.debug(f"Trader {self.id} posted new {order_type.upper()} order: {new_order}")
 
     def get_my_transactions(self, transactions):
         """filter full transactions to get only mine"""
@@ -150,11 +153,42 @@ class Trader:
         response = await self.send_to_trading_system(cancel_order_request)
         # TODO: deal with response if needed (what if order is already cancelled? what is a part of transaction?
         #  what if order is not found? what if order is not yours?)
-        logger.info(f"Trader {self.id} sent cancel order request: {cancel_order_request}")
+        logger.warning(f"Trader {self.id} sent cancel order request: {cancel_order_request}")
 
-    def generate_noise_orders(self, all_active_orders):
+
+    async def find_and_cancel_order(self, price):
+        """finds the order with the given price and cancels it"""
+        for order in self.orders:
+            print(order['price'], price, order['price'] == price)
+            print('-'*20)
+
+            if int(order['price']) == int(price): # TODO: this is a temporary solution, we should compare floats! UGLY FIX!
+                await self.send_cancel_order_request(order['id'])
+                self.orders.remove(order)
+                return
+
+        logger.warning(f"Trader {self.id} tried to cancel order with price {price} but it was not found")
+        logger.warning(f'Available prices are: {[order.get("price") for order in self.orders]}')
+
+    async def run(self):
+
+        while True:
+            orders_to_do = self.generate_noise_orders()
+            logger.critical(f'Trader {self.id} has orders to do: {orders_to_do}')
+            for order in orders_to_do:
+
+                if order['action_type'] == ActionType.POST_NEW_ORDER.value:
+                    await self.post_new_order(order['amount'], order['price'], order['order_type'])
+                elif order['action_type'] == ActionType.CANCEL_ORDER.value:
+                    logger.error(order)
+                    await self.find_and_cancel_order(order['price'])
+
+            await asyncio.sleep(1)  # LEt's post them every second. TODO: REMOVE THIS
+            # await asyncio.sleep(random.uniform(2, 5))  # Wait between 2 to 5 seconds before posting the next order
+
+    def generate_noise_orders(self):
         # Convert the active orders to the book format understood by get_noise_rule
-        book_format = convert_to_book_format(all_active_orders)
+        book_format = convert_to_book_format(self.all_orders)
 
         #
         # # Convert the trader's state to the noise_state format
@@ -166,7 +200,5 @@ class Trader:
         # # Generate noise orders
         noise_orders = get_noise_rule(book_format, signal_noise, noise_state, settings_noise, settings)
         converted_noise_orders = convert_to_trader_actions(noise_orders)
-        logger.critical(converted_noise_orders)
 
-
-        # return noise_orders
+        return converted_noise_orders

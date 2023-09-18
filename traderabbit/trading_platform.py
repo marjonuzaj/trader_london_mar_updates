@@ -268,8 +268,13 @@ class TradingSystem:
             return {"status": "cancel success", "orders": this_trader_orders, "respond": True}
 
     async def handle_update_book_status(self, order):
-        "This one returns the most recent book to the trader who requested it."
-        pass
+        """This one returns the most recent book to the trader who requested it.
+        TODO: now we just stupidly pass all active orders. We need to filter them based on the trader_id, perhaps
+        we'll generate a proper book (with prices-levels) here. but not now.
+        """
+        trader_id = order.get('trader_id')
+        if trader_id:
+            return {"status": "success", "respond": True, "orders": self.active_orders.values()}
 
     async def handle_register_me(self, msg_body):
         trader_id = msg_body.get('trader_id')

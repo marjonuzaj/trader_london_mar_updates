@@ -4,11 +4,12 @@ from functools import wraps
 import aio_pika
 from enum import Enum
 from uuid import UUID
-from structures.structures import OrderModel
+from structures.structures import OrderModel, OrderType, ActionType
 from collections import defaultdict
 from typing import List, Dict
 import numpy as np
-
+dict_keys = type({}.keys())
+dict_values = type({}.values())
 class CustomEncoder(JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
@@ -19,6 +20,10 @@ class CustomEncoder(JSONEncoder):
             return str(obj)
         if isinstance(obj, Enum):
             return obj.value
+        if isinstance(obj, dict_keys):
+            return list(obj)
+        if isinstance(obj, dict_values):
+            return list(obj)
         return JSONEncoder.default(self, obj)
 
 
@@ -146,12 +151,12 @@ def convert_to_trader_actions(response_dict):
             size = size_list[0]
             action = {}
             if size > 0:
-                action['action_type'] = 'place_order'
+                action['action_type'] = ActionType.POST_NEW_ORDER.value
                 action['order_type'] = order_type
                 action['price'] = price
                 action['amount'] = size
             elif size < 0:
-                action['action_type'] = 'cancel_order'
+                action['action_type'] = ActionType.CANCEL_ORDER.value
                 action['order_type'] = order_type
                 action['price'] = price
             if action:

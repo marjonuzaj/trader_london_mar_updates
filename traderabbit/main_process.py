@@ -9,17 +9,7 @@ logger = setup_custom_logger(__name__)
 
 
 async def randomly_do_something(trader):
-    actions = ['cancel', 'post']
-    while True:
-
-        action = random.choice(actions)
-        if action == 'cancel':
-            await randomly_cancel_orders(trader)
-        elif action == 'post':
-            await trader.post_new_order()
-
-        await asyncio.sleep(1)  # LEt's post them every second. TODO: REMOVE THIS
-        # await asyncio.sleep(random.uniform(2, 5))  # Wait between 2 to 5 seconds before posting the next order
+    await trader.run()
 
 
 async def generate_random_posts(trader):
@@ -42,13 +32,14 @@ async def main(trading_system, traders):
         await i.connect_to_session(trading_session_uuid=trading_session_uuid)
 
 
+
     # await trader1.initialize()
     # await trader1.connect_to_session(trading_session_uuid=trading_system.id)
 
     await trading_system.send_broadcast({"content": "Market is open"})
     trader_tasks = []
     for i in traders:
-        trader_tasks.append(asyncio.create_task(randomly_do_something(i)))
+        trader_tasks.append(asyncio.create_task(i.run()))
 
     trading_system_task = asyncio.create_task(trading_system.run())  # Assume this method exists
 
