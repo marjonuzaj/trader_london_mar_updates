@@ -159,10 +159,7 @@ class Trader:
     async def find_and_cancel_order(self, price):
         """finds the order with the given price and cancels it"""
         for order in self.orders:
-            print(order['price'], price, order['price'] == price)
-            print('-'*20)
-
-            if int(order['price']) == int(price): # TODO: this is a temporary solution, we should compare floats! UGLY FIX!
+            if order['price']  == price:
                 await self.send_cancel_order_request(order['id'])
                 self.orders.remove(order)
                 return
@@ -174,13 +171,10 @@ class Trader:
 
         while True:
             orders_to_do = self.generate_noise_orders()
-            logger.critical(f'Trader {self.id} has orders to do: {orders_to_do}')
             for order in orders_to_do:
-
                 if order['action_type'] == ActionType.POST_NEW_ORDER.value:
                     await self.post_new_order(order['amount'], order['price'], order['order_type'])
                 elif order['action_type'] == ActionType.CANCEL_ORDER.value:
-                    logger.error(order)
                     await self.find_and_cancel_order(order['price'])
 
             await asyncio.sleep(1)  # LEt's post them every second. TODO: REMOVE THIS
