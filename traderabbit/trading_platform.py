@@ -8,7 +8,7 @@ from typing import List, Dict
 from structures import OrderStatus, OrderModel, OrderType, TransactionModel
 import asyncio
 from collections import defaultdict
-from traderabbit.utils import CustomEncoder
+from traderabbit.utils import CustomEncoder, dump_transactions_to_csv, dump_orders_to_csv
 from asyncio import Lock, Event
 from pprint import pprint
 
@@ -17,16 +17,20 @@ logger = setup_custom_logger(__name__)
 
 class TradingSystem:
     transactions = List[TransactionModel]
+    all_orders = Dict[uuid.UUID, Dict]
+    active_orders = Dict[uuid.UUID, Dict]
+    buffered_orders = Dict[uuid.UUID, Dict]
+
     def __init__(self, buffer_delay=5):
         """
         buffer_delay: The delay in seconds before the Trading System processes the buffered orders.
         """
         # self.id = uuid.uuid4()
         self.id = "1234"  # for testing purposes
-        self.all_orders: Dict[uuid.UUID, Dict] = {}
-        self.active_orders: Dict[uuid.UUID, Dict] = {}
+        self.all_orders = {}
+        self.active_orders = {}
         self.buffered_orders = {}
-        self.transactions =  []
+        self.transactions = []
         self.broadcast_exchange_name = f'broadcast_{self.id}'
         self.queue_name = f'trading_system_queue_{self.id}'
         self.trader_exchange = None
@@ -63,7 +67,11 @@ class TradingSystem:
             logger.info(f"Trading System {self.id} channel closed")
             await self.connection.close()
             logger.info(f"Trading System {self.id} connection closed")
+        #     dump transactions and orders to files
+            await dump_transactions_to_csv(self.transactions, f'transactions_{self.id}.csv')
 
+            # Dump all_orders to CSV
+            await dump_orders_to_csv(self.all_orders, f'all_orders_{self.id}.csv')
         except Exception as e:
             print(f"An error occurred during cleanup: {e}")
 
