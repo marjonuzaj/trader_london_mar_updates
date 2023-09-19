@@ -10,6 +10,7 @@ from typing import List, Dict
 import numpy as np
 dict_keys = type({}.keys())
 dict_values = type({}.values())
+DATA_PATH='data'
 class CustomEncoder(JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
@@ -165,3 +166,13 @@ def convert_to_trader_actions(response_dict):
     return actions
 
 
+def generate_file_name(session_uuid, file_type, extension='csv'):
+    """
+    Generate a filename for the given file type and session UUID.
+    """
+    # Format the current date and time to a string
+    date_str = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    # Generate the filename
+    file_name = f"{file_type}_{session_uuid}_{date_str}.{extension}"
+    # Return the filename prefixed with the "data/" directory
+    return f"{DATA_PATH}/{file_name}"

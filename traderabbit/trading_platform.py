@@ -8,7 +8,7 @@ from typing import List, Dict
 from structures import OrderStatus, OrderModel, OrderType, TransactionModel
 import asyncio
 from collections import defaultdict
-from traderabbit.utils import CustomEncoder, dump_transactions_to_csv, dump_orders_to_csv
+from traderabbit.utils import CustomEncoder, dump_transactions_to_csv, dump_orders_to_csv, generate_file_name
 from asyncio import Lock, Event
 from pprint import pprint
 
@@ -20,6 +20,7 @@ class TradingSystem:
     all_orders = Dict[uuid.UUID, Dict]
 
     buffered_orders = Dict[uuid.UUID, Dict]
+
     @property
     def active_orders(self):
         return {k: v for k, v in self.all_orders.items() if v['status'] == OrderStatus.ACTIVE}
@@ -59,6 +60,11 @@ class TradingSystem:
         await trader_queue.purge()
 
     async def clean_up(self):
+        """
+        This one is mostly used for closing connections and channels opened by a trading session.
+        At this stage we also dump existing transactions and orders from the memory. In the future, we'll probably
+        dump them to a database.
+        """
         try:
             # Unbind the queue from the exchange (optional, as auto_delete should handle this)
             trader_queue = await self.channel.get_queue(self.queue_name)
@@ -70,10 +76,9 @@ class TradingSystem:
             await self.connection.close()
             logger.info(f"Trading System {self.id} connection closed")
             #     dump transactions and orders to files
-            await dump_transactions_to_csv(self.transactions, f'transactions_{self.id}.csv')
-
+            await dump_transactions_to_csv(self.transactions, generate_file_name(self.id, "transactions"))
             # Dump all_orders to CSV
-            await dump_orders_to_csv(self.all_orders, f'all_orders_{self.id}.csv')
+            await dump_orders_to_csv(self.all_orders, generate_file_name(self.id, "all_orders"))
         except Exception as e:
             print(f"An error occurred during cleanup: {e}")
 
@@ -103,9 +108,6 @@ class TradingSystem:
 
         return order_dict
 
-
-
-
     async def add_order_to_buffer(self, order):
         async with self.lock:
             trader_id = order['trader_id']
@@ -118,10 +120,12 @@ class TradingSystem:
             if self.release_task is None:
                 self.release_task = asyncio.create_task(self.release_buffered_orders())
             return dict(message="Order added to buffer", order=order)
+
     @property
     def list_active_orders(self):
         """ Returns a list of all active orders. When we switch to real DB or mongo, we won't need it anymore."""
         return list(self.active_orders.values())
+
     async def release_buffered_orders(self):
         sleep_task = asyncio.create_task(asyncio.sleep(self.buffer_delay))
         release_event_task = asyncio.create_task(self.release_event.wait())
@@ -206,15 +210,12 @@ class TradingSystem:
 
             to_remove.extend([ask['id'], bid['id']])
 
-
-
         # Add transactions to self.transactions
         self.transactions.extend(transactions)
 
         # Log the number of cleared and transacted orders
         logger.info(f"Cleared {len(to_remove)} orders.")
         logger.info(f"Created {len(transactions)} transactions.")
-
 
     async def handle_add_order(self, data: dict):
         # TODO: Validate the order
@@ -234,7 +235,6 @@ class TradingSystem:
         if resp:
             logger.info(f'Total active orders: {len(self.active_orders)}')
 
-
         return dict(respond=True, data=resp)
 
     async def handle_cancel_order(self, data: dict):
@@ -242,11 +242,10 @@ class TradingSystem:
         trader_id = data.get('trader_id')
         # we lock here to guarantee that no transactions are happening while we are canceling the order
         async with self.lock:
-            order_id=uuid.UUID(order_id)
+            order_id = uuid.UUID(order_id)
             # TODO: we don't need this condition when we get rid of active orders
 
             if order_id not in self.active_orders:
-
                 return {"status": "failed", "reason": "Order not found"}
             existing_order = self.active_orders[order_id]
             if existing_order['trader_id'] != trader_id:
@@ -260,7 +259,6 @@ class TradingSystem:
             # If we've made it here, the order can be canceled
 
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
-
 
             logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
             this_trader_orders = [order for order in self.active_orders.values() if order['trader_id'] == trader_id]

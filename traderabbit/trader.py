@@ -130,7 +130,7 @@ class Trader:
         }
 
         resp = await self.send_to_trading_system(new_order)
-        logger.info(f"Trader {self.id} gets the response: {resp}")
+        
         logger.debug(f"Trader {self.id} posted new {order_type.upper()} order: {new_order}")
 
     def get_my_transactions(self, transactions):

@@ -8,22 +8,7 @@ import signal
 logger = setup_custom_logger(__name__)
 
 
-async def randomly_do_something(trader):
-    await trader.run()
-
-
-async def generate_random_posts(trader):
-    await trader.post_new_order()
-
-
-async def randomly_cancel_orders(trader):
-    my_orders = trader.orders
-
-    if len(my_orders) > 0:
-        order_to_cancel = random.choice(my_orders)
-        await trader.send_cancel_order_request(order_to_cancel.get('id'))
-
-async def main(trading_system, traders):
+async def main(trading_system, traders=()):
     await trading_system.initialize()
     trading_session_uuid = trading_system.id
     logger.info(f"Trading session UUID: {trading_session_uuid}")
@@ -31,23 +16,19 @@ async def main(trading_system, traders):
         await i.initialize()
         await i.connect_to_session(trading_session_uuid=trading_session_uuid)
 
-
-
-    # await trader1.initialize()
-    # await trader1.connect_to_session(trading_session_uuid=trading_system.id)
-
     await trading_system.send_broadcast({"content": "Market is open"})
     trader_tasks = []
     for i in traders:
         trader_tasks.append(asyncio.create_task(i.run()))
 
-    trading_system_task = asyncio.create_task(trading_system.run())  # Assume this method exists
+    trading_system_task = asyncio.create_task(trading_system.run())
 
     await asyncio.gather(trading_system_task, *trader_tasks)
 
 
-async def async_handle_exit(trading_system, traders, loop):
-    await trading_system.clean_up()
+async def async_handle_exit(loop ,trading_system = None , traders=()):
+    if trading_system:
+        await trading_system.clean_up()
     for i in traders:
         await i.clean_up()
 
@@ -62,8 +43,8 @@ async def async_handle_exit(trading_system, traders, loop):
     loop.stop()
 
 
-def handle_exit(loop, trading_system, traders):
-    loop.create_task(async_handle_exit(trading_system, traders, loop))
+def handle_exit(loop, trading_system=None, traders=()):
+    loop.create_task(async_handle_exit(loop, trading_system,  traders))
 
 
 if __name__ == "__main__":

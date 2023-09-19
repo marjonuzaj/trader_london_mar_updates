@@ -5,6 +5,12 @@
 1. **trader.py**: Manages individual trading operations.
 2. **trading_platform.py**: Handles communication with the trading platform and executes orders.
 3. **main_process.py**: The main script that initializes and controls the entire trading system.
+4. **utils.py**: Contains utility functions used by the trading system. This file contains also important
+converters between format used by noise_trader functions (such as `get_noise_rule`) and the format used by the trading system.
+5. The noise trader functions are located in `traders/noise_trader.py` file
+6. Current `Trader` class has a method `run()` that passes the book and current orders to the noise trader function,
+gets the orders from there, converts them to a format understandable by the trading system and sends them to the trading platform.
+
 
 #### How to Run the System:
 
@@ -40,7 +46,7 @@ Alternatively, you can run the trading system and the trader as separate process
 To run only the trading system, execute the following command:
 
 ```bash
-python run_trading_system.py
+python -m traderabbit.platform_process
 ```
 
 #### Running a Trader
@@ -50,29 +56,41 @@ a have a trading platform to connect to. Then, knowing trading platform's ID,
 execute the following command:
 
 ```bash
-python run_trader.py --platform_id <Your_Platform_ID>
+python -m traderabbit.trader_process --session-id=<Your_Session_UUID> --num-traders=<Number_of_Traders>
 ```
 
-Replace `<Your_Platform_ID>` with the ID of the trading platform you want the trader to connect to.
+Replace `<Your_Session_UUID>` with the ID of the trading platform you want the trader to connect to.
+The default value for session is 1234. It is for development purposes only: in real life each
+new trading session will have a unique ID (UUID).
+
+The default number of traders are 3. You can change it by replacing `<Number_of_Traders>` with the number of traders you want to run.
+
 
 ---
 
 Both methods use RabbitMQ for inter-process communication. Make sure RabbitMQ is running before you start either the trading system or the trader.
 
 
-#### Running for development
+#### Running for Development
 
-Remember that you can use nodemon to run the above mentioned proccesses to automatically restart them when a file changes. For example, to run the trading system, you can use the following command:
+For automatic code reloading during development, you can use `hupper` to monitor for file changes and restart the processes accordingly. Below are the commands to run the trading system and traders using `hupper`.
 
+To run the trading system:
 ```bash
-nodemon --exec python -m  traderabbit.run_trading_system
-```
-OR:
-```bash 
-nodemon --exec python -m traderabbit.main_process
-```
-OR to run a trader:
-```bash
-nodemon --exec python -m traderabbit.run_trader --platform_id <Your_Platform_ID>
+hupper -m traderabbit.platform_process
 ```
 
+OR to run the main process:
+```bash
+hupper -m traderabbit.main_process
+```
+
+To run a trader with a specific trading session UUID and a given number of traders:
+```bash
+hupper -m traderabbit.trader_process --session-id=<Your_Session_UUID> --num-traders=<Number_of_Traders>
+```
+
+(The default number of traders is 3. The default session id is 1234.)
+
+
+This will automatically restart the selected process if you make changes to any of the Python files.
