@@ -94,9 +94,9 @@ class TradingSession:
 
 
     def create_transaction(self, buyer_order: Order, seller_order: Order, quantity: int, price: float):
-        # Mark the orders as fulfilled
-        buyer_order.order_status = OrderStatus.FULFILLED
-        seller_order.order_status = OrderStatus.FULFILLED
+        # Mark the orders as executed
+        buyer_order.order_status = OrderStatus.EXECUTED
+        seller_order.order_status = OrderStatus.EXECUTED
 
         # Update portfolios
         transaction_value = quantity * price
@@ -111,7 +111,7 @@ class TradingSession:
         seller.data.stocks -= quantity
         seller.data.blocked_stocks -= quantity  # Unblock the stocks
 
-        # Remove fulfilled orders from the active book
+        # Remove executed orders from the active book
         self.session_data.active_book = [order for order in self.session_data.active_book if
                                          order.order_status == OrderStatus.ACTIVE]
 

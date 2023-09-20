@@ -193,9 +193,9 @@ class TradingSystem:
             ask = viable_asks.pop(0)
             bid = viable_bids.pop(0)
 
-            # Change the status to 'FULFILLED' in the all_orders dictionary
-            self.all_orders[ask['id']]['status'] = OrderStatus.FULFILLED.value
-            self.all_orders[bid['id']]['status'] = OrderStatus.FULFILLED.value
+            # Change the status to 'EXECUTED' in the all_orders dictionary
+            self.all_orders[ask['id']]['status'] = OrderStatus.EXECUTED.value
+            self.all_orders[bid['id']]['status'] = OrderStatus.EXECUTED.value
 
             # Create a transaction
             transaction_price = (ask['price'] + bid['price']) / 2  # Mid-price

@@ -130,7 +130,7 @@ class Trader:
         }
 
         resp = await self.send_to_trading_system(new_order)
-        
+
         logger.debug(f"Trader {self.id} posted new {order_type.upper()} order: {new_order}")
 
     def get_my_transactions(self, transactions):
@@ -182,6 +182,7 @@ class Trader:
 
     def generate_noise_orders(self):
         # Convert the active orders to the book format understood by get_noise_rule
+
         book_format = convert_to_book_format(self.all_orders)
 
         #
