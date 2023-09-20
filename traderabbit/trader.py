@@ -126,12 +126,12 @@ class Trader:
             "action": ActionType.POST_NEW_ORDER.value,
             "amount": amount,
             "price": price,
-            "order_type": order_type
+            "order_type": order_type.value,
         }
 
         resp = await self.send_to_trading_system(new_order)
 
-        logger.debug(f"Trader {self.id} posted new {order_type.upper()} order: {new_order}")
+        logger.debug(f"Trader {self.id} posted new {order_type} order: {new_order}")
 
     def get_my_transactions(self, transactions):
         """filter full transactions to get only mine"""
@@ -173,11 +173,13 @@ class Trader:
             orders_to_do = self.generate_noise_orders()
             for order in orders_to_do:
                 if order['action_type'] == ActionType.POST_NEW_ORDER.value:
-                    await self.post_new_order(order['amount'], order['price'], order['order_type'])
+                    order_type_str = order['order_type']
+                    order_type_value = OrderType[order_type_str.upper()]
+                    await self.post_new_order(order['amount'], order['price'], order_type_value)
                 elif order['action_type'] == ActionType.CANCEL_ORDER.value:
                     await self.find_and_cancel_order(order['price'])
 
-            await asyncio.sleep(1)  # LEt's post them every second. TODO: REMOVE THIS
+            await asyncio.sleep(.1)  # LEt's post them every second. TODO: REMOVE THIS
             # await asyncio.sleep(random.uniform(2, 5))  # Wait between 2 to 5 seconds before posting the next order
 
     def generate_noise_orders(self):

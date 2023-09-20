@@ -4,17 +4,22 @@ from functools import wraps
 import aio_pika
 from enum import Enum
 from uuid import UUID
-from structures.structures import OrderModel, OrderType, ActionType
+from structures.structures import OrderModel, OrderType, ActionType, LobsterEventType
 from collections import defaultdict
 from typing import List, Dict
 import numpy as np
 import asyncio
 import os
 import csv
+from traderabbit.custom_logger import setup_custom_logger
+import time
+logger = setup_custom_logger(__name__)
 
 dict_keys = type({}.keys())
 dict_values = type({}.values())
-DATA_PATH='data'
+DATA_PATH = 'data'
+LOBSTER_MONEY_CONSTANT = 10000
+
 class CustomEncoder(JSONEncoder):
     def default(self, obj):
         if isinstance(obj, datetime):
@@ -30,9 +35,6 @@ class CustomEncoder(JSONEncoder):
         if isinstance(obj, dict_values):
             return list(obj)
         return JSONEncoder.default(self, obj)
-
-
-
 
 
 async def dump_orders_to_csv(orders: dict, file_name='all_orders_history.csv'):
@@ -88,10 +90,10 @@ def convert_to_book_format(active_orders, levels_n=10, default_price=2000):
         size = order['amount']
         order_type = order['order_type']
 
-        if order_type == 'ask':
+        if order_type == OrderType.ASK.value:
             ind_ask_price.append(price)
             ind_ask_size.append(size)
-        elif order_type == 'bid':
+        elif order_type == OrderType.BID.value:
             ind_bid_price.append(price)
             ind_bid_size.append(size)
 
@@ -123,12 +125,11 @@ def convert_to_book_format(active_orders, levels_n=10, default_price=2000):
     return book_with_depth
 
 
-
 def _append_lobster_message_to_csv(lobster_msg, file_name):
     csv_file_path = os.path.join(DATA_PATH, f"{file_name}.csv")
 
-    # Define the header (column names) for the CSV file
-    fieldnames = ['timestamp', 'event_type', 'order_id', 'price', 'amount', 'order_type']
+    # Define the header (column names) for the LOBSTER-formatted CSV file
+    fieldnames = ['Time', 'Event Type', 'Order ID', 'Size', 'Price', 'Direction']
 
     # Check if the file exists to decide if headers need to be written
     write_header = not os.path.exists(csv_file_path)
@@ -145,37 +146,25 @@ def _append_lobster_message_to_csv(lobster_msg, file_name):
         writer.writerow(lobster_msg)
 
 
-
 async def append_lobster_message_to_csv(lobster_msg, file_name):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _append_lobster_message_to_csv, lobster_msg, file_name)
 
 
+def create_lobster_message(order_dict, event_type: LobsterEventType):
+    """Creates a LOBSTER-formatted message dictionary."""
 
-
-
-def create_lobster_message( order, event_type):
-    """Create a LOBSTER formatted message for a given order and event type.
-    See the documentation at: https://lobsterdata.com/info/DataStructure.php"""
-    # Extract needed info from the order
-    order_id = order['id']
-    timestamp = order['timestamp']
-    price = order['price']
-    amount = order['amount']
-    order_type = order['order_type']
-
-    # Construct LOBSTER message
     lobster_message = {
-        'timestamp': timestamp,
-        'event_type': LobsterEventType[event_type].value,  # Use the enum here
-        'order_id': order_id,
-        'price': price,
-        'amount': amount,
-        'order_type': order_type
+        'Time': order_dict['timestamp'].timestamp(),
+        'Event Type': event_type,
+        'Order ID': order_dict['id'],
+        'Size': order_dict['amount'],
+        'Price': order_dict['price']*LOBSTER_MONEY_CONSTANT,
+        'Direction': order_dict['order_type']  # Convert the string to its enum value
     }
 
-    # You can then append this to a CSV or another data storage
     return lobster_message
+
 
 def convert_to_noise_state(active_orders: List[Dict]) -> Dict:
     noise_state = {
@@ -187,7 +176,9 @@ def convert_to_noise_state(active_orders: List[Dict]) -> Dict:
 
     for order in active_orders:
         if order['status'] == 'active':
-            order_type = order['order_type']
+            order_type_value = order['order_type']
+            order_type = OrderType(order_type_value).name.lower()
+
             price = order['price']
             amount = order['amount']
             noise_state['outstanding_orders'][order_type][price] += amount
@@ -197,6 +188,7 @@ def convert_to_noise_state(active_orders: List[Dict]) -> Dict:
     noise_state['outstanding_orders']['ask'] = dict(noise_state['outstanding_orders']['ask'])
 
     return noise_state
+
 
 def convert_to_trader_actions(response_dict):
     actions = []

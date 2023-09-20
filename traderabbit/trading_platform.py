@@ -5,7 +5,7 @@ from datetime import datetime
 from traderabbit.utils import ack_message
 from traderabbit.custom_logger import setup_custom_logger
 from typing import List, Dict
-from structures import OrderStatus, OrderModel, OrderType, TransactionModel
+from structures import OrderStatus, OrderModel, OrderType, TransactionModel, LobsterEventType
 import asyncio
 from collections import defaultdict
 from traderabbit.utils import (CustomEncoder, dump_transactions_to_csv,
@@ -101,7 +101,7 @@ class TradingSystem:
 
     def get_message_file_name(self):
         """Returns file name for messages which is a trading platform id + datetime of creation with _ as spaces"""
-        return f"{self.id}_{self.creation_time.strftime('%Y-%m-%d_%H-%M-%S')}"
+        return f"messages_{self.id}_{self.creation_time.strftime('%Y-%m-%d_%H-%M-%S')}"
 
     async def place_order(self, order_dict: Dict, trader_id: uuid.UUID):
         """ This one is called by handle_add_order, and is the one that actually places the order in the system.
@@ -113,8 +113,10 @@ class TradingSystem:
             'status': OrderStatus.ACTIVE.value,
         })
         self.all_orders[order_id] = order_dict
+
         # then we add a record in a LOBSTER format to the csv file
-        lobster_message = create_lobster_message(order_dict)
+        lobster_message = create_lobster_message(order_dict, event_type=LobsterEventType.NEW_LIMIT_ORDER)
+
         await append_lobster_message_to_csv(lobster_message, self.get_message_file_name())
         return order_dict
 
@@ -185,11 +187,11 @@ class TradingSystem:
 
         # Check if any transactions are possible
         if spread < 0:
-            logger.info(
+            logger.critical(
                 f"No overlapping orders. Spread is negative: {spread}. Lowest ask: {lowest_ask}, highest bid: {highest_bid}")
 
             return
-        logger.info(f"Spread: {spread}")
+        logger.critical(f"Spread: {spread}")
         # Filter the bids and asks that could be involved in a transaction
         viable_asks = [ask for ask in asks if ask['price'] <= highest_bid]
         viable_bids = [bid for bid in bids if bid['price'] >= lowest_ask]
@@ -207,6 +209,18 @@ class TradingSystem:
             self.all_orders[ask['id']]['status'] = OrderStatus.EXECUTED.value
             self.all_orders[bid['id']]['status'] = OrderStatus.EXECUTED.value
 
+            # Create LOBSTER messages for the executed ask and bid orders
+            logger.critical('DO WE REACH THIS TRANSACTION STAGE??!')
+            lobster_message_ask = create_lobster_message(ask,
+                                                         event_type=LobsterEventType.EXECUTION_VISIBLE)
+            lobster_message_bid = create_lobster_message(bid,
+                                                         event_type=LobsterEventType.EXECUTION_VISIBLE)
+
+            # Append the messages to the CSV file
+            await append_lobster_message_to_csv(lobster_message_ask, self.get_message_file_name())
+            await append_lobster_message_to_csv(lobster_message_bid, self.get_message_file_name())
+            logger.critical(f'LOBSTER MESSAGE ASK: {lobster_message_ask}')
+            logger.critical(f'LOBSTER MESSAGE BID: {lobster_message_bid}')
             # Create a transaction
             transaction_price = (ask['price'] + bid['price']) / 2  # Mid-price
             transaction = TransactionModel(
@@ -269,6 +283,9 @@ class TradingSystem:
             # If we've made it here, the order can be canceled
 
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
+            # Create and append a LOBSTER message for the cancel event
+            lobster_message = create_lobster_message(existing_order, event_type=LobsterEventType.CANCELLATION_TOTAL)
+            await append_lobster_message_to_csv(lobster_message, self.get_message_file_name())
 
             logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
             this_trader_orders = [order for order in self.active_orders.values() if order['trader_id'] == trader_id]
@@ -317,48 +334,4 @@ class TradingSystem:
         while True:
             await asyncio.sleep(1)
 
-    def generate_order_book(self):
-        active_orders = self.active_orders
-        asks = defaultdict(int)
-        bids = defaultdict(int)
-        min_ask_price = float('inf')
-        max_bid_price = float('-inf')
 
-        for order in active_orders:
-            price = order['price']
-            order_type = order['order_type']
-
-            if order_type == 'ask':
-                asks[price] += 1
-                min_ask_price = min(min_ask_price, price)
-            elif order_type == 'bid':
-                bids[price] += 1
-                max_bid_price = max(max_bid_price, price)
-
-        # Calculate the current spread
-        current_spread = None
-        if min_ask_price != float('inf') and max_bid_price != float('-inf'):
-            current_spread = min_ask_price - max_bid_price
-
-        order_book = {
-            'asks': dict(asks),
-            'bids': dict(bids),
-            'current_spread': current_spread
-        }
-
-        return order_book
-
-    def get_outstanding_orders(self, trader_id):
-        outstanding_orders = {'bid': defaultdict(int), 'ask': defaultdict(int)}
-
-        for order in self.active_orders:
-            if order['trader_id'] == trader_id:
-                order_type = order['order_type']
-                price = order['price']
-                outstanding_orders[order_type][price] += 1
-
-        # Convert defaultdict to regular dict for JSON serialization if needed
-        outstanding_orders['bid'] = dict(outstanding_orders['bid'])
-        outstanding_orders['ask'] = dict(outstanding_orders['ask'])
-
-        return outstanding_orders
