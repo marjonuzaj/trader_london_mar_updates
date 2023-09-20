@@ -12,6 +12,8 @@ from traderabbit.utils import (CustomEncoder, dump_transactions_to_csv,
                                dump_orders_to_csv, generate_file_name,
                                create_lobster_message,
                                append_lobster_message_to_csv,
+                               convert_to_book_format,
+                               append_order_book_to_csv
                                )
 from asyncio import Lock, Event
 
@@ -80,9 +82,9 @@ class TradingSystem:
             await self.connection.close()
             logger.info(f"Trading System {self.id} connection closed")
             #     dump transactions and orders to files
-            await dump_transactions_to_csv(self.transactions, generate_file_name(self.id, "transactions"))
+            # await dump_transactions_to_csv(self.transactions, generate_file_name(self.id, "transactions"))
             # Dump all_orders to CSV
-            await dump_orders_to_csv(self.all_orders, generate_file_name(self.id, "all_orders"))
+            # await dump_orders_to_csv(self.all_orders, generate_file_name(self.id, "all_orders"))
         except Exception as e:
             print(f"An error occurred during cleanup: {e}")
 
@@ -99,9 +101,9 @@ class TradingSystem:
             routing_key=f'trader_{trader_id}'
         )
 
-    def get_message_file_name(self):
+    def get_file_name(self):
         """Returns file name for messages which is a trading platform id + datetime of creation with _ as spaces"""
-        return f"messages_{self.id}_{self.creation_time.strftime('%Y-%m-%d_%H-%M-%S')}"
+        return f"{self.id}_{self.creation_time.strftime('%Y-%m-%d_%H-%M-%S')}"
 
     async def place_order(self, order_dict: Dict, trader_id: uuid.UUID):
         """ This one is called by handle_add_order, and is the one that actually places the order in the system.
@@ -109,6 +111,7 @@ class TradingSystem:
         handle_add_order method.
         """
         order_id = order_dict['id']
+        timestamp = order_dict['timestamp']
         order_dict.update({
             'status': OrderStatus.ACTIVE.value,
         })
@@ -117,7 +120,16 @@ class TradingSystem:
         # then we add a record in a LOBSTER format to the csv file
         lobster_message = create_lobster_message(order_dict, event_type=LobsterEventType.NEW_LIMIT_ORDER)
 
-        await append_lobster_message_to_csv(lobster_message, self.get_message_file_name())
+        await append_lobster_message_to_csv(lobster_message, self.get_file_name())
+        # After updating the active_orders, convert it to the book format
+        # logger.critical('*' * 100)
+        # logger.critical(type(self.active_orders))
+        order_book = convert_to_book_format(self.active_orders.values())
+
+        #
+        # # Now append this to the CSV
+        await append_order_book_to_csv(order_book, self.get_file_name(), timestamp=timestamp.timestamp())
+        logger.critical('ADDING ORDER TO BOOK')
         return order_dict
 
     async def add_order_to_buffer(self, order):
@@ -187,11 +199,11 @@ class TradingSystem:
 
         # Check if any transactions are possible
         if spread < 0:
-            logger.critical(
+            logger.info(
                 f"No overlapping orders. Spread is negative: {spread}. Lowest ask: {lowest_ask}, highest bid: {highest_bid}")
 
             return
-        logger.critical(f"Spread: {spread}")
+        logger.info(f"Spread: {spread}")
         # Filter the bids and asks that could be involved in a transaction
         viable_asks = [ask for ask in asks if ask['price'] <= highest_bid]
         viable_bids = [bid for bid in bids if bid['price'] >= lowest_ask]
@@ -210,17 +222,16 @@ class TradingSystem:
             self.all_orders[bid['id']]['status'] = OrderStatus.EXECUTED.value
 
             # Create LOBSTER messages for the executed ask and bid orders
-            logger.critical('DO WE REACH THIS TRANSACTION STAGE??!')
+
             lobster_message_ask = create_lobster_message(ask,
                                                          event_type=LobsterEventType.EXECUTION_VISIBLE)
             lobster_message_bid = create_lobster_message(bid,
                                                          event_type=LobsterEventType.EXECUTION_VISIBLE)
 
             # Append the messages to the CSV file
-            await append_lobster_message_to_csv(lobster_message_ask, self.get_message_file_name())
-            await append_lobster_message_to_csv(lobster_message_bid, self.get_message_file_name())
-            logger.critical(f'LOBSTER MESSAGE ASK: {lobster_message_ask}')
-            logger.critical(f'LOBSTER MESSAGE BID: {lobster_message_bid}')
+            await append_lobster_message_to_csv(lobster_message_ask, self.get_file_name())
+            await append_lobster_message_to_csv(lobster_message_bid, self.get_file_name())
+
             # Create a transaction
             transaction_price = (ask['price'] + bid['price']) / 2  # Mid-price
             transaction = TransactionModel(
@@ -285,7 +296,7 @@ class TradingSystem:
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
             # Create and append a LOBSTER message for the cancel event
             lobster_message = create_lobster_message(existing_order, event_type=LobsterEventType.CANCELLATION_TOTAL)
-            await append_lobster_message_to_csv(lobster_message, self.get_message_file_name())
+            await append_lobster_message_to_csv(lobster_message, self.get_file_name())
 
             logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
             this_trader_orders = [order for order in self.active_orders.values() if order['trader_id'] == trader_id]
@@ -333,5 +344,3 @@ class TradingSystem:
         """
         while True:
             await asyncio.sleep(1)
-
-
