@@ -122,14 +122,13 @@ class TradingSystem:
 
         await append_lobster_message_to_csv(lobster_message, self.get_file_name())
         # After updating the active_orders, convert it to the book format
-        # logger.critical('*' * 100)
+
         # logger.critical(type(self.active_orders))
         order_book = convert_to_book_format(self.active_orders.values())
 
-        #
         # # Now append this to the CSV
         await append_order_book_to_csv(order_book, self.get_file_name(), timestamp=timestamp.timestamp())
-        logger.critical('ADDING ORDER TO BOOK')
+
         return order_dict
 
     async def add_order_to_buffer(self, order):
@@ -220,7 +219,7 @@ class TradingSystem:
             # Change the status to 'EXECUTED' in the all_orders dictionary
             self.all_orders[ask['id']]['status'] = OrderStatus.EXECUTED.value
             self.all_orders[bid['id']]['status'] = OrderStatus.EXECUTED.value
-
+            timestamp = datetime.utcnow()
             # Create LOBSTER messages for the executed ask and bid orders
 
             lobster_message_ask = create_lobster_message(ask,
@@ -231,6 +230,11 @@ class TradingSystem:
             # Append the messages to the CSV file
             await append_lobster_message_to_csv(lobster_message_ask, self.get_file_name())
             await append_lobster_message_to_csv(lobster_message_bid, self.get_file_name())
+            # logger.critical(type(self.active_orders))
+            order_book = convert_to_book_format(self.active_orders.values())
+
+            # # Now append this to the CSV
+            await append_order_book_to_csv(order_book, self.get_file_name(), timestamp=timestamp.timestamp())
 
             # Create a transaction
             transaction_price = (ask['price'] + bid['price']) / 2  # Mid-price
@@ -238,7 +242,7 @@ class TradingSystem:
                 id=uuid.uuid4(),
                 bid_order_id=bid['id'],
                 ask_order_id=ask['id'],
-                timestamp=datetime.utcnow(),
+                timestamp=timestamp,
                 price=transaction_price
             )
             transactions.append(transaction.model_dump())
@@ -275,6 +279,7 @@ class TradingSystem:
     async def handle_cancel_order(self, data: dict):
         order_id = data.get('order_id')
         trader_id = data.get('trader_id')
+
         # we lock here to guarantee that no transactions are happening while we are canceling the order
         async with self.lock:
             order_id = uuid.UUID(order_id)
@@ -292,11 +297,17 @@ class TradingSystem:
                 return {"status": "failed", "reason": "Order is not active"}
 
             # If we've made it here, the order can be canceled
-
+            timestamp = datetime.utcnow()
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
             # Create and append a LOBSTER message for the cancel event
             lobster_message = create_lobster_message(existing_order, event_type=LobsterEventType.CANCELLATION_TOTAL)
             await append_lobster_message_to_csv(lobster_message, self.get_file_name())
+
+            # logger.critical(type(self.active_orders))
+            order_book = convert_to_book_format(self.active_orders.values())
+
+            # # Now append this to the CSV
+            await append_order_book_to_csv(order_book, self.get_file_name(), timestamp=timestamp.timestamp())
 
             logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
             this_trader_orders = [order for order in self.active_orders.values() if order['trader_id'] == trader_id]
