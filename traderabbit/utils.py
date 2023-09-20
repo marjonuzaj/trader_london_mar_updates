@@ -8,6 +8,10 @@ from structures.structures import OrderModel, OrderType, ActionType
 from collections import defaultdict
 from typing import List, Dict
 import numpy as np
+import asyncio
+import os
+import csv
+
 dict_keys = type({}.keys())
 dict_values = type({}.values())
 DATA_PATH='data'
@@ -28,7 +32,7 @@ class CustomEncoder(JSONEncoder):
         return JSONEncoder.default(self, obj)
 
 
-import csv
+
 
 
 async def dump_orders_to_csv(orders: dict, file_name='all_orders_history.csv'):
@@ -120,8 +124,58 @@ def convert_to_book_format(active_orders, levels_n=10, default_price=2000):
 
 
 
+def _append_lobster_message_to_csv(lobster_msg, file_name):
+    csv_file_path = os.path.join(DATA_PATH, f"{file_name}.csv")
+
+    # Define the header (column names) for the CSV file
+    fieldnames = ['timestamp', 'event_type', 'order_id', 'price', 'amount', 'order_type']
+
+    # Check if the file exists to decide if headers need to be written
+    write_header = not os.path.exists(csv_file_path)
+
+    # Open the file in append mode ('a'). This creates the file if it doesn't exist.
+    with open(csv_file_path, 'a', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        # Write the header only if the file didn't exist
+        if write_header:
+            writer.writeheader()
+
+        # Write the data
+        writer.writerow(lobster_msg)
 
 
+
+async def append_lobster_message_to_csv(lobster_msg, file_name):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _append_lobster_message_to_csv, lobster_msg, file_name)
+
+
+
+
+
+def create_lobster_message( order, event_type):
+    """Create a LOBSTER formatted message for a given order and event type.
+    See the documentation at: https://lobsterdata.com/info/DataStructure.php"""
+    # Extract needed info from the order
+    order_id = order['id']
+    timestamp = order['timestamp']
+    price = order['price']
+    amount = order['amount']
+    order_type = order['order_type']
+
+    # Construct LOBSTER message
+    lobster_message = {
+        'timestamp': timestamp,
+        'event_type': LobsterEventType[event_type].value,  # Use the enum here
+        'order_id': order_id,
+        'price': price,
+        'amount': amount,
+        'order_type': order_type
+    }
+
+    # You can then append this to a CSV or another data storage
+    return lobster_message
 
 def convert_to_noise_state(active_orders: List[Dict]) -> Dict:
     noise_state = {

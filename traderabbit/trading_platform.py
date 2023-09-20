@@ -8,9 +8,12 @@ from typing import List, Dict
 from structures import OrderStatus, OrderModel, OrderType, TransactionModel
 import asyncio
 from collections import defaultdict
-from traderabbit.utils import CustomEncoder, dump_transactions_to_csv, dump_orders_to_csv, generate_file_name
+from traderabbit.utils import (CustomEncoder, dump_transactions_to_csv,
+                               dump_orders_to_csv, generate_file_name,
+                               create_lobster_message,
+                               append_lobster_message_to_csv,
+                               )
 from asyncio import Lock, Event
-from pprint import pprint
 
 logger = setup_custom_logger(__name__)
 
@@ -31,6 +34,7 @@ class TradingSystem:
         """
         # self.id = uuid.uuid4()
         self.id = "1234"  # for testing purposes
+        self.creation_time = datetime.utcnow()
         self.all_orders = {}
         self.buffered_orders = {}
         self.transactions = []
@@ -95,7 +99,11 @@ class TradingSystem:
             routing_key=f'trader_{trader_id}'
         )
 
-    def place_order(self, order_dict: Dict, trader_id: uuid.UUID):
+    def get_message_file_name(self):
+        """Returns file name for messages which is a trading platform id + datetime of creation with _ as spaces"""
+        return f"{self.id}_{self.creation_time.strftime('%Y-%m-%d_%H-%M-%S')}"
+
+    async def place_order(self, order_dict: Dict, trader_id: uuid.UUID):
         """ This one is called by handle_add_order, and is the one that actually places the order in the system.
         It adds automatically - we do all the validation (whether a trader allowed to place an order, etc) in the
         handle_add_order method.
@@ -105,7 +113,9 @@ class TradingSystem:
             'status': OrderStatus.ACTIVE.value,
         })
         self.all_orders[order_id] = order_dict
-
+        # then we add a record in a LOBSTER format to the csv file
+        lobster_message = create_lobster_message(order_dict)
+        await append_lobster_message_to_csv(lobster_message, self.get_message_file_name())
         return order_dict
 
     async def add_order_to_buffer(self, order):
@@ -140,7 +150,7 @@ class TradingSystem:
             for trader_id, order_dict in self.buffered_orders.items():
                 order_dict['timestamp'] = common_timestamp
 
-                self.place_order(order_dict, trader_id)
+                await self.place_order(order_dict, trader_id)
 
             logger.info(f"Total of {len(self.buffered_orders)} orders released from buffer")
             await self.clear_orders()
