@@ -3,7 +3,7 @@ import aio_pika
 import json
 import uuid
 import random
-from structures.structures import OrderModel, OrderStatus, OrderType, ActionType, TransactionModel
+from structures.structures import OrderModel, OrderStatus, OrderType, ActionType, TraderType
 from datetime import datetime
 from traderabbit.utils import ack_message, convert_to_noise_state, convert_to_book_format, convert_to_trader_actions
 from traderabbit.custom_logger import setup_custom_logger
@@ -19,7 +19,7 @@ class Trader:
     all_orders = []
     transactions = []
 
-    def __init__(self):
+    def __init__(self, trader_type: TraderType):
         self.id = str(uuid.uuid4())
         print(f"Trader created with UUID: {self.id}")
         self.connection = None

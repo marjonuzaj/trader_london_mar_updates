@@ -4,7 +4,7 @@ from traderabbit.custom_logger import setup_custom_logger
 from traderabbit.trader import Trader
 from traderabbit.trading_platform import TradingSystem
 import signal
-
+from structures.structures import TraderType
 logger = setup_custom_logger(__name__)
 
 
@@ -50,12 +50,9 @@ def handle_exit(loop, trading_system=None, traders=()):
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     trading_system = TradingSystem(buffer_delay=5)
-    trader1 = Trader()
-    trader2 = Trader()
-    trader3 = Trader()
-    traders = [trader1,
-               trader2, trader3
-               ]
+    num_traders = 3
+    traders = [Trader(trader_type=TraderType.NOISE) for _ in range(num_traders)]
+
 
     # Add the signal handler for Ctrl+C and SIGTERM
     signal.signal(signal.SIGINT, lambda *args: handle_exit(loop, trading_system, traders))
