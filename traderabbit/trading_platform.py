@@ -118,7 +118,9 @@ class TradingSystem:
         self.all_orders[order_id] = order_dict
 
         # then we add a record in a LOBSTER format to the csv file
-        lobster_message = create_lobster_message(order_dict, event_type=LobsterEventType.NEW_LIMIT_ORDER)
+        trader_type = self.connected_traders[trader_id]['trader_type']
+        lobster_message = create_lobster_message(order_dict, event_type=LobsterEventType.NEW_LIMIT_ORDER,
+                                                 trader_type=trader_type)
 
         await append_lobster_message_to_csv(lobster_message, self.get_file_name())
         # After updating the active_orders, convert it to the book format
@@ -191,15 +193,15 @@ class TradingSystem:
         if asks and bids:
             lowest_ask = asks[0]['price']
             highest_bid = bids[0]['price']
-            spread = highest_bid - lowest_ask
+            spread = lowest_ask - highest_bid
         else:
             logger.info("No overlapping orders.")
             return
 
         # Check if any transactions are possible
-        if spread < 0:
+        if spread > 0:
             logger.info(
-                f"No overlapping orders. Spread is negative: {spread}. Lowest ask: {lowest_ask}, highest bid: {highest_bid}")
+                f"No overlapping orders. Spread is positive: {spread}. Lowest ask: {lowest_ask}, highest bid: {highest_bid}")
 
             return
         logger.info(f"Spread: {spread}")
@@ -221,11 +223,14 @@ class TradingSystem:
             self.all_orders[bid['id']]['status'] = OrderStatus.EXECUTED.value
             timestamp = datetime.utcnow()
             # Create LOBSTER messages for the executed ask and bid orders
-
+            ask_trader_type = self.connected_traders[ask['trader_id']]['trader_type']
+            bid_trader_type = self.connected_traders[bid['trader_id']]['trader_type']
             lobster_message_ask = create_lobster_message(ask,
-                                                         event_type=LobsterEventType.EXECUTION_VISIBLE)
+                                                         event_type=LobsterEventType.EXECUTION_VISIBLE,
+                                                         trader_type=ask_trader_type)
             lobster_message_bid = create_lobster_message(bid,
-                                                         event_type=LobsterEventType.EXECUTION_VISIBLE)
+                                                         event_type=LobsterEventType.EXECUTION_VISIBLE,
+                                                         trader_type=bid_trader_type)
 
             # Append the messages to the CSV file
             await append_lobster_message_to_csv(lobster_message_ask, self.get_file_name())
@@ -300,7 +305,9 @@ class TradingSystem:
             timestamp = datetime.utcnow()
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
             # Create and append a LOBSTER message for the cancel event
-            lobster_message = create_lobster_message(existing_order, event_type=LobsterEventType.CANCELLATION_TOTAL)
+            trader_type = self.connected_traders[trader_id]['trader_type']
+            lobster_message = create_lobster_message(existing_order, event_type=LobsterEventType.CANCELLATION_TOTAL,
+                                                     trader_type=trader_type)
             await append_lobster_message_to_csv(lobster_message, self.get_file_name())
 
             # logger.critical(type(self.active_orders))
@@ -325,7 +332,7 @@ class TradingSystem:
 
     async def handle_register_me(self, msg_body):
         trader_id = msg_body.get('trader_id')
-        self.connected_traders[trader_id] = "Connected"
+        self.connected_traders[trader_id] = {'trader_type': msg_body.get('trader_type'), }
         logger.info(f"Trader {trader_id} connected.")
         logger.info(f"Total connected traders: {len(self.connected_traders)}")
 

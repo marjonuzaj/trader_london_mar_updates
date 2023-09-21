@@ -242,7 +242,7 @@ def _append_lobster_message_to_csv(lobster_msg, file_name):
     csv_file_path = os.path.join(DATA_PATH, f"messages_{file_name}.csv")
 
     # Define the header (column names) for the LOBSTER-formatted CSV file
-    fieldnames = ['Time', 'Event Type', 'Order ID', 'Size', 'Price', 'Direction']
+    fieldnames = ['Trader type', 'Time', 'Event Type', 'Order ID', 'Size', 'Price', 'Direction']
 
     # Check if the file exists to decide if headers need to be written
     write_header = not os.path.exists(csv_file_path)
@@ -264,10 +264,11 @@ async def append_lobster_message_to_csv(lobster_msg, file_name):
     await loop.run_in_executor(None, _append_lobster_message_to_csv, lobster_msg, file_name)
 
 
-def create_lobster_message(order_dict, event_type: LobsterEventType):
+def create_lobster_message(order_dict, event_type: LobsterEventType, trader_type: int):
     """Creates a LOBSTER-formatted message dictionary."""
 
     lobster_message = {
+        'Trader type': trader_type,
         'Time': order_dict['timestamp'].timestamp(),
         'Event Type': event_type,
         'Order ID': order_dict['id'],

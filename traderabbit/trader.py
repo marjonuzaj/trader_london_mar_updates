@@ -81,7 +81,7 @@ class Trader:
     async def register(self):
         message = {
             'action': ActionType.REGISTER.value,
-            'trader_type': self.trader_type.value
+            'trader_type': self.trader_type
         }
 
         await self.send_to_trading_system(message)
@@ -181,7 +181,7 @@ class Trader:
                 elif order['action_type'] == ActionType.CANCEL_ORDER.value:
                     await self.find_and_cancel_order(order['price'])
 
-            await asyncio.sleep(1)  # LEt's post them every second. TODO: REMOVE THIS
+            await asyncio.sleep(3)  # LEt's post them every second. TODO: REMOVE THIS
             # await asyncio.sleep(random.uniform(2, 5))  # Wait between 2 to 5 seconds before posting the next order
 
     def generate_noise_orders(self):
