@@ -17,6 +17,7 @@ async def main(trading_system, traders=()):
         await i.connect_to_session(trading_session_uuid=trading_session_uuid)
 
     await trading_system.send_broadcast({"content": "Market is open"})
+    logger.critical(trading_system.connected_traders)
     trader_tasks = []
     for i in traders:
         trader_tasks.append(asyncio.create_task(i.run()))

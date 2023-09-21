@@ -3,7 +3,7 @@
 from termcolor import colored
 import logging
 import os
-CUR_LEVEL = logging.CRITICAL
+CUR_LEVEL = logging.INFO
 class CustomFormatter(logging.Formatter):
     COLORS = {
         'WARNING': 'yellow',

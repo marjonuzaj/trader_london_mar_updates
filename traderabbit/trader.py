@@ -20,6 +20,7 @@ class Trader:
     transactions = []
 
     def __init__(self, trader_type: TraderType):
+        self.trader_type = trader_type.value
         self.id = str(uuid.uuid4())
         print(f"Trader created with UUID: {self.id}")
         self.connection = None
@@ -80,6 +81,7 @@ class Trader:
     async def register(self):
         message = {
             'action': ActionType.REGISTER.value,
+            'trader_type': self.trader_type.value
         }
 
         await self.send_to_trading_system(message)
