@@ -120,7 +120,8 @@ class TradingSystem:
         # then we add a record in a LOBSTER format to the csv file
         trader_type = self.connected_traders[trader_id]['trader_type']
         lobster_message = create_lobster_message(order_dict, event_type=LobsterEventType.NEW_LIMIT_ORDER,
-                                                 trader_type=trader_type)
+                                                 trader_type=trader_type,
+                                                 timestamp=timestamp)
 
         await append_lobster_message_to_csv(lobster_message, self.get_file_name())
 
@@ -234,10 +235,12 @@ class TradingSystem:
             bid_trader_type = self.connected_traders[bid['trader_id']]['trader_type']
             lobster_message_ask = create_lobster_message(ask,
                                                          event_type=LobsterEventType.EXECUTION_VISIBLE,
-                                                         trader_type=ask_trader_type)
+                                                         trader_type=ask_trader_type,
+                                                         timestamp=timestamp)
             lobster_message_bid = create_lobster_message(bid,
                                                          event_type=LobsterEventType.EXECUTION_VISIBLE,
-                                                         trader_type=bid_trader_type)
+                                                         trader_type=bid_trader_type,
+                                                         timestamp=timestamp)
 
             # Append the messages to the CSV file
             await append_lobster_message_to_csv(lobster_message_ask, self.get_file_name())
@@ -306,11 +309,13 @@ class TradingSystem:
             # If we've made it here, the order can be canceled
             timestamp = datetime.utcnow()
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
+            # TODO: add cancelled_when and executed_when to the order type
             # Create and append a LOBSTER message for the cancel event
             # TODO: move it to a separate method
             trader_type = self.connected_traders[trader_id]['trader_type']
             lobster_message = create_lobster_message(existing_order, event_type=LobsterEventType.CANCELLATION_TOTAL,
-                                                     trader_type=trader_type)
+                                                     trader_type=trader_type,
+                                                     timestamp=timestamp)
             await append_lobster_message_to_csv(lobster_message, self.get_file_name())
 
             # logger.critical(type(self.active_orders))

@@ -105,7 +105,6 @@ def expand_dataframe(df, max_depth=10, step=1, reverse=False, default_price=0):
     # Sort the DataFrame based on 'price'
     df = df.sort_values('price', ascending=not reverse)
 
-
     # Sort the DataFrame based on 'price'
     df.sort_values('price', ascending=not reverse, inplace=True)
 
@@ -117,7 +116,6 @@ def expand_dataframe(df, max_depth=10, step=1, reverse=False, default_price=0):
 
     # Determine the direction of the step based on 'reverse'
     step_direction = -1 if reverse else 1
-
 
     # Generate additional elements for price levels
     last_price = df['price'].iloc[-1 if reverse else 0]
@@ -163,7 +161,6 @@ def convert_to_book_format(active_orders, levels_n=10, default_price=2000):
         df = pd.DataFrame(columns=[field for field in OrderModel.__annotations__])
     df['price'] = df['price'].round(5)
     df = df.astype({"price": int, "amount": int})
-
 
     # Aggregate orders by price, summing the amounts
     df_asks = df[df['order_type'] == OrderType.ASK.value].groupby('price')['amount'].sum().reset_index().sort_values(
@@ -246,18 +243,16 @@ def _append_order_book_to_csv(order_book, file_name, timestamp):
         # Write the book data with timestamp as a separate column
         writer.writerow([timestamp] + list(order_book))
 
-async def append_order_book_to_csv(order_book, file_name, timestamp):
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _append_order_book_to_csv, order_book, file_name, timestamp)
-
-
-
-
-
 
 async def append_order_book_to_csv(order_book, file_name, timestamp):
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, _append_order_book_to_csv, order_book, file_name, timestamp)
+
+
+async def append_order_book_to_csv(order_book, file_name, timestamp):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _append_order_book_to_csv, order_book, file_name, timestamp)
+
 
 def _append_lobster_message_to_csv(lobster_msg, file_name):
     csv_file_path = os.path.join(DATA_PATH, f"messages_{file_name}.csv")
@@ -285,12 +280,12 @@ async def append_lobster_message_to_csv(lobster_msg, file_name):
     await loop.run_in_executor(None, _append_lobster_message_to_csv, lobster_msg, file_name)
 
 
-def create_lobster_message(order_dict, event_type: LobsterEventType, trader_type: int):
+def create_lobster_message(order_dict, event_type: LobsterEventType, trader_type: int, timestamp: datetime):
     """Creates a LOBSTER-formatted message dictionary."""
 
     lobster_message = {
         'Trader type': trader_type,
-        'Time': order_dict['timestamp'].timestamp(),
+        'Time': timestamp.timestamp(),
         'Event Type': event_type,
         'Order ID': order_dict['id'],
         'Size': order_dict['amount'],
