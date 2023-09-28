@@ -137,7 +137,10 @@ class TradingSystem:
 
             if self.release_task is None:
                 self.release_task = asyncio.create_task(self.release_buffered_orders())
-            return dict(message="Order added to buffer", order=order)
+            return dict(message="Order added to buffer", order=order,
+                        # TODO: this is an ugly fix.... let's think how to deal with all that later
+                        orders=self.list_active_orders+list(self.buffered_orders.values())
+                        )
 
     @property
     def list_active_orders(self):
@@ -165,7 +168,6 @@ class TradingSystem:
 
             # After updating the active_orders, convert it to the book format
 
-            # logger.critical(type(self.active_orders))
             order_book = convert_to_book_format(self.active_orders.values())
 
             # # Now append this to the CSV
@@ -177,7 +179,9 @@ class TradingSystem:
             self.release_task = None  # Reset the task so it can be recreated
             self.release_event.clear()  # Reset the event
             # TODO: let's think about the depth of the order book to send; and also do we need all transactions??
-            await self.send_broadcast(message=dict(message="Buffer released", orders=self.list_active_orders,
+            await self.send_broadcast(message=dict(message="Buffer released",
+                                                   # TODO: this is an ugly fix.... let's think how to deal with all that later
+                                                   orders=self.list_active_orders+list(self.buffered_orders.values())
                                                    ))
 
     async def clear_orders(self):
@@ -277,7 +281,7 @@ class TradingSystem:
         if resp:
             logger.info(f'Total active orders: {len(self.active_orders)}')
 
-        return dict(respond=True, data=resp)
+        return dict(respond=True, **resp)
 
     async def handle_cancel_order(self, data: dict):
         order_id = data.get('order_id')
@@ -316,9 +320,15 @@ class TradingSystem:
             await append_order_book_to_csv(order_book, self.get_file_name(), timestamp=timestamp.timestamp())
 
             logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
-            this_trader_orders = [order for order in self.active_orders.values() if order['trader_id'] == trader_id]
+            await self.send_broadcast(message=dict(message="Order is cancelled",
+                                                   # TODO: this is an ugly fix.... let's think how to deal with all that later
+                                                   orders=self.list_active_orders+list(self.buffered_orders.values())
+                                                   ))
 
-            return {"status": "cancel success", "orders": this_trader_orders, "respond": True}
+            return {"status": "cancel success",
+
+                    "order": order_id,
+                    "respond": True}
 
     async def handle_update_book_status(self, order):
         """This one returns the most recent book to the trader who requested it.

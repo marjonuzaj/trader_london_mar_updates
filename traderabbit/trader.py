@@ -188,7 +188,7 @@ class Trader:
         # Convert the active orders to the book format understood by get_noise_rule
 
         book_format = convert_to_book_format(self.all_orders)
-
+        # logger.critical(f"Book format: {list(book_format)}")
         #
         # # Convert the trader's state to the noise_state format
         noise_state = convert_to_noise_state(self.orders)  # Assuming you have this method

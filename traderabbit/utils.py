@@ -105,6 +105,10 @@ def expand_dataframe(df, max_depth=10, step=1, reverse=False, default_price=0):
     # Sort the DataFrame based on 'price'
     df = df.sort_values('price', ascending=not reverse)
 
+
+    # Sort the DataFrame based on 'price'
+    df.sort_values('price', ascending=not reverse, inplace=True)
+
     # Calculate the number of additional rows needed
     additional_rows_count = max_depth - len(df)
 
@@ -114,10 +118,19 @@ def expand_dataframe(df, max_depth=10, step=1, reverse=False, default_price=0):
     # Determine the direction of the step based on 'reverse'
     step_direction = -1 if reverse else 1
 
+
     # Generate additional elements for price levels
     last_price = df['price'].iloc[-1 if reverse else 0]
-    additional_price_elements = [last_price + i * step * step_direction for i in range(1, additional_rows_count + 1)]
+    existing_prices = set(df['price'].values)
+    additional_price_elements = []
 
+    i = 1
+    while len(additional_price_elements) < additional_rows_count:
+        new_price = last_price + i * step * step_direction
+        if new_price not in existing_prices:
+            additional_price_elements.append(new_price)
+            existing_prices.add(new_price)
+        i += 1
     # Generate additional elements for amount (all zeros)
     additional_amount_elements = [0] * additional_rows_count
 
@@ -129,7 +142,8 @@ def expand_dataframe(df, max_depth=10, step=1, reverse=False, default_price=0):
 
     # Sort the DataFrame based on 'price' if 'reverse' is True
     if reverse:
-        df_expanded = df_expanded.sort_values('price', ascending=False).reset_index(drop=True)
+        df_expanded.sort_values('price', ascending=False, inplace=True)
+        df_expanded.reset_index(drop=True, inplace=True)
 
     return df_expanded
 
@@ -147,6 +161,10 @@ def convert_to_book_format(active_orders, levels_n=10, default_price=2000):
     else:
         # Create an empty DataFrame with default columns
         df = pd.DataFrame(columns=[field for field in OrderModel.__annotations__])
+    df['price'] = df['price'].round(5)
+    df = df.astype({"price": int, "amount": int})
+
+
     # Aggregate orders by price, summing the amounts
     df_asks = df[df['order_type'] == OrderType.ASK.value].groupby('price')['amount'].sum().reset_index().sort_values(
         by='price').head(
@@ -158,9 +176,12 @@ def convert_to_book_format(active_orders, levels_n=10, default_price=2000):
 
     df_asks = expand_dataframe(df_asks, max_depth=10, step=1, reverse=False, default_price=default_price)
     df_bids = expand_dataframe(df_bids, max_depth=10, step=1, reverse=True, default_price=default_price - 1)
+
     ask_prices = df_asks['price'].tolist()
+
     ask_quantities = df_asks['amount'].tolist()
     bid_prices = df_bids['price'].tolist()
+
     bid_quantities = df_bids['amount'].tolist()
 
     # Interleave the lists using np.ravel and np.column_stack

@@ -17,7 +17,7 @@ async def main(trading_system, traders=()):
         await i.connect_to_session(trading_session_uuid=trading_session_uuid)
 
     await trading_system.send_broadcast({"content": "Market is open"})
-    logger.critical(trading_system.connected_traders)
+
     trader_tasks = []
     for i in traders:
         trader_tasks.append(asyncio.create_task(i.run()))
@@ -50,7 +50,7 @@ def handle_exit(loop, trading_system=None, traders=()):
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    trading_system = TradingSystem(buffer_delay=5)
+    trading_system = TradingSystem(buffer_delay=0)
     num_traders = 3
     traders = [Trader(trader_type=TraderType.NOISE) for _ in range(num_traders)]
 
