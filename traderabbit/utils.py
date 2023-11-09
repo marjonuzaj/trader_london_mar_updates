@@ -24,7 +24,7 @@ logger = setup_custom_logger(__name__)
 dict_keys = type({}.keys())
 dict_values = type({}.values())
 DATA_PATH = 'data'
-LOBSTER_MONEY_CONSTANT = 10000
+LOBSTER_MONEY_CONSTANT = 1
 
 
 class CustomEncoder(JSONEncoder):
@@ -44,34 +44,8 @@ class CustomEncoder(JSONEncoder):
         return JSONEncoder.default(self, obj)
 
 
-async def dump_orders_to_csv(orders: dict, file_name='all_orders_history.csv'):
-    # Convert the dict of orders to a list of orders (which are also dicts)
-    # Also include the 'order_id' in each dictionary
-    orders_list = [{**{'order_id': k}, **v} for k, v in orders.items()]
-
-    # Open the file in write mode ('w') to overwrite any existing data
-    with open(file_name, 'w', newline='') as f:
-        # Assume all dictionaries in the list have the same keys
-        writer = csv.DictWriter(f, fieldnames=orders_list[0].keys())
-
-        # Write the headers
-        writer.writeheader()
-
-        # Write the orders
-        writer.writerows(orders_list)
 
 
-async def dump_transactions_to_csv(transactions: list, file_name='transaction_history.csv'):
-    # Open the file in write mode ('w') to overwrite any existing data
-    with open(file_name, 'w', newline='') as f:
-        # Assume all dictionaries in the list have the same keys
-        writer = csv.DictWriter(f, fieldnames=transactions[0].keys())
-
-        # Write the headers
-        writer.writeheader()
-
-        # Write the transactions
-        writer.writerows(transactions)
 
 
 def ack_message(func):
@@ -223,38 +197,29 @@ def convert_active_orders_to_lobster_format(active_orders, levels_n=10):
 
     return df_lobster
 
-
-def _append_order_book_to_csv(order_book, file_name, timestamp):
+def _append_order_books_to_csv(order_books, file_name):
     csv_file_path = os.path.join(DATA_PATH, f"book_{file_name}.csv")
 
     # Check if the file exists to decide if headers need to be written
     write_header = not os.path.exists(csv_file_path)
 
     with open(csv_file_path, 'a', newline='') as csvfile:
+        # Assume all order books have the same format, so use the first one to prepare header
+        first_order_book = order_books[0][0]  # First element is the order book, second is the timestamp
+        header = ["Timestamp"]
+        for i in range(1, (len(first_order_book) // 4) + 1):
+            header.extend([f"Ask_Price_{i}", f"Ask_Size_{i}", f"Bid_Price_{i}", f"Bid_Size_{i}"])
+
         writer = csv.writer(csvfile)
 
         # Write the header only if the file didn't exist
         if write_header:
-            header = ["Timestamp"]
-            for i in range(1, (len(order_book) // 4) + 1):
-                header.extend([f"Ask_Price_{i}", f"Ask_Size_{i}", f"Bid_Price_{i}", f"Bid_Size_{i}"])
             writer.writerow(header)
 
-        # Write the book data with timestamp as a separate column
-        writer.writerow([timestamp] + list(order_book))
-
-
-async def append_order_book_to_csv(order_book, file_name, timestamp):
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _append_order_book_to_csv, order_book, file_name, timestamp)
-
-
-async def append_order_book_to_csv(order_book, file_name, timestamp):
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _append_order_book_to_csv, order_book, file_name, timestamp)
-
-
-def _append_lobster_message_to_csv(lobster_msg, file_name):
+        # Write the book data with timestamp as a separate column for each record
+        for order_book, timestamp in order_books:
+            writer.writerow([timestamp] + list(order_book))
+def _append_lobster_messages_to_csv(lobster_msgs, file_name):
     csv_file_path = os.path.join(DATA_PATH, f"messages_{file_name}.csv")
 
     # Define the header (column names) for the LOBSTER-formatted CSV file
@@ -263,7 +228,6 @@ def _append_lobster_message_to_csv(lobster_msg, file_name):
     # Check if the file exists to decide if headers need to be written
     write_header = not os.path.exists(csv_file_path)
 
-    # Open the file in append mode ('a'). This creates the file if it doesn't exist.
     with open(csv_file_path, 'a', newline='') as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
@@ -271,13 +235,17 @@ def _append_lobster_message_to_csv(lobster_msg, file_name):
         if write_header:
             writer.writeheader()
 
-        # Write the data
-        writer.writerow(lobster_msg)
+        # Write the data for each message
+        for lobster_msg in lobster_msgs:
+            writer.writerow(lobster_msg)
 
-
-async def append_lobster_message_to_csv(lobster_msg, file_name):
+async def append_order_books_to_csv(order_books, file_name):
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _append_lobster_message_to_csv, lobster_msg, file_name)
+    await loop.run_in_executor(None, _append_order_books_to_csv, order_books, file_name)
+
+async def append_lobster_messages_to_csv(lobster_msgs, file_name):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _append_lobster_messages_to_csv, lobster_msgs, file_name)
 
 
 def create_lobster_message(order_dict, event_type: LobsterEventType, trader_type: int, timestamp: datetime):

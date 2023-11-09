@@ -8,12 +8,12 @@ from typing import List, Dict
 from structures import OrderStatus, OrderModel, OrderType, TransactionModel, LobsterEventType
 import asyncio
 from collections import defaultdict
-from traderabbit.utils import (CustomEncoder, dump_transactions_to_csv,
-                               dump_orders_to_csv, generate_file_name,
+from traderabbit.utils import (CustomEncoder,
+
                                create_lobster_message,
-                               append_lobster_message_to_csv,
+                               append_lobster_messages_to_csv,
                                convert_to_book_format,
-                               append_order_book_to_csv
+                               append_order_books_to_csv
                                )
 from asyncio import Lock, Event
 
@@ -140,14 +140,6 @@ class TradingSystem:
             'status': OrderStatus.ACTIVE.value,
         })
         self.all_orders[order_id] = order_dict
-        # todo: the following should be redone in such a way that messages will be added only if no transactions happened
-        # then we add a record in a LOBSTER format to the csv file
-        trader_type = self.connected_traders[trader_id]['trader_type']
-        lobster_message = create_lobster_message(order_dict, event_type=LobsterEventType.NEW_LIMIT_ORDER,
-                                                 trader_type=trader_type,
-                                                 timestamp=timestamp)
-
-        await append_lobster_message_to_csv(lobster_message, self.get_file_name())
 
         return order_dict
     async def release_buffered_orders(self):
@@ -168,12 +160,16 @@ class TradingSystem:
 
                 await self.place_order(order_dict, trader_id)
 
-            logger.critical(f"Total of {len(self.buffered_orders)} orders released from buffer")
+            logger.info(f"Total of {len(self.buffered_orders)} orders released from buffer")
             # Clear orders and get transactions and ids of removed orders
             clear_result = await self.clear_orders()
+
+            if clear_result is None:
+                clear_result = {'transactions': [], 'removed_active_orders': []}
             transactions = clear_result['transactions']
             removed_order_ids = clear_result['removed_active_orders']
-
+            logger.critical(f"Total of {len(transactions)} transactions created")
+            # Process executed transactions
             for transaction in transactions:
                 # Determine the most recent order (ask or bid) based on the timestamp
                 ask_order = self.all_orders[transaction['ask_order_id']]
@@ -189,25 +185,33 @@ class TradingSystem:
 
                 # Create one book record for the transaction
                 book_record = convert_to_book_format(self.active_orders.values())
-                new_books.append((book_record, transaction['timestamp']))
+                new_books.append((book_record, transaction['timestamp'].timestamp()))
 
-                # Process non-executed buffered orders: accumulate messages and book records
-            non_executed_orders = [order for order_id, order in self.buffered_orders.items() if
-                                   order_id not in removed_order_ids]
-            for order in non_executed_orders:
-                # Accumulate messages for new limit orders
-                message = create_lobster_message(order, event_type=LobsterEventType.NEW_LIMIT_ORDER,
-                                                 trader_type=self.connected_traders[order['trader_id']]['trader_type'],
-                                                 timestamp=order['timestamp'])
-                new_messages.append(message)
 
-                # Accumulate book records for new limit orders
-                book_record = convert_to_book_format(self.active_orders.values())
-                new_books.append((book_record, common_timestamp.timestamp()))
+            # Process non-executed buffered orders
+            for order_id, order in self.buffered_orders.items():
+                if order_id not in removed_order_ids:
+                    # Accumulate messages for new limit orders
+                    message = create_lobster_message(order, event_type=LobsterEventType.NEW_LIMIT_ORDER,
+                                                     trader_type=self.connected_traders[order['trader_id']][
+                                                         'trader_type'],
+                                                     timestamp=order['timestamp'])
+                    new_messages.append(message)
+
+                    # Accumulate book records for new limit orders
+                    book_record = convert_to_book_format(self.active_orders.values())
+                    new_books.append((book_record, common_timestamp.timestamp()))
+
             logger.info(f'number of new book records: {len(new_books)}')
             logger.info(f'number of new messages: {len(new_messages)}')
             assert len(new_books) == len(new_messages), "Number of new books and messages should be the same"
 
+            # # Append new book records and messages to the CSV
+            await append_order_books_to_csv(new_books, self.get_file_name())
+            await append_lobster_messages_to_csv(new_messages, self.get_file_name())
+
+
+            # Clear the buffered orders
             self.buffered_orders.clear()
             self.release_task = None  # Reset the task so it can be recreated
             self.release_event.clear()  # Reset the event
@@ -236,7 +240,7 @@ class TradingSystem:
             highest_bid = bids[0]['price']
             spread = lowest_ask - highest_bid
         else:
-            logger.critical("No overlapping orders.")
+            logger.info("No overlapping orders.")
             return res
 
         # Check if any transactions are possible
@@ -315,14 +319,20 @@ class TradingSystem:
         order_id = data.get('order_id')
         trader_id = data.get('trader_id')
 
-        # we lock here to guarantee that no transactions are happening while we are canceling the order
-        async with self.lock:
+        # Ensure order_id is a valid UUID
+        try:
             order_id = uuid.UUID(order_id)
-            # TODO: we don't need this condition when we get rid of active orders
+        except ValueError:
+            logger.warning(f"Invalid order ID format: {order_id}.")
+            return {"status": "failed", "reason": "Invalid order ID format"}
 
+        async with self.lock:
+            # Check if the order exists and belongs to the trader
             if order_id not in self.active_orders:
                 return {"status": "failed", "reason": "Order not found"}
+
             existing_order = self.active_orders[order_id]
+
             if existing_order['trader_id'] != trader_id:
                 logger.warning(f"Trader {trader_id} does not own order {order_id}.")
                 return {"status": "failed", "reason": "Trader does not own the order"}
@@ -331,34 +341,36 @@ class TradingSystem:
                 logger.warning(f"Order {order_id} is not active and cannot be canceled.")
                 return {"status": "failed", "reason": "Order is not active"}
 
-            # If we've made it here, the order can be canceled
+            # Cancel the order
             timestamp = datetime.utcnow()
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
-            # TODO: add cancelled_when and executed_when to the order type
-            # Create and append a LOBSTER message for the cancel event
-            # TODO: move it to a separate method
+
+            # Create a LOBSTER message for the cancel event
             trader_type = self.connected_traders[trader_id]['trader_type']
             lobster_message = create_lobster_message(existing_order, event_type=LobsterEventType.CANCELLATION_TOTAL,
                                                      trader_type=trader_type,
                                                      timestamp=timestamp)
-            await append_lobster_message_to_csv(lobster_message, self.get_file_name())
 
-            # logger.critical(type(self.active_orders))
+            # Append the message to the CSV, note that we're wrapping it in a list
+            await append_lobster_messages_to_csv([lobster_message], self.get_file_name())
+
+            # Create the order book record for the current state and append to CSV
             order_book = convert_to_book_format(self.active_orders.values())
-            # TODO: move it to a separate method
-            # # Now append this to the CSV
-            await append_order_book_to_csv(order_book, self.get_file_name(), timestamp=timestamp.timestamp())
+            # Note that we're creating a list of tuples for the order books as well
+            await append_order_books_to_csv([(order_book, timestamp.timestamp())], self.get_file_name())
 
-            logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
-            await self.send_broadcast(message=dict(message="Order is cancelled",
-                                                   # TODO: this is an ugly fix.... let's think how to deal with all that later
-                                                   orders=self.list_active_orders+list(self.buffered_orders.values())
-                                                   ))
+            logger.critical(f"Order {order_id} has been canceled for trader {trader_id}.")
 
-            return {"status": "cancel success",
+            # Broadcast the cancellation, implementation may vary based on your system's logic
+            await self.broadcast_order_cancellation(trader_id)
 
-                    "order": order_id,
-                    "respond": True}
+            return {"status": "cancel success", "order": order_id, "respond": True}
+
+    async def broadcast_order_cancellation(self, trader_id):
+        # Implementation for broadcasting order cancellation
+        # Note: Make sure self.list_active_orders and self.buffered_orders reflect the current state after cancellation
+        await self.send_broadcast(message=dict(message="Order is cancelled",
+                                               orders=self.list_active_orders + list(self.buffered_orders.values())))
 
     async def handle_update_book_status(self, order):
         """This one returns the most recent book to the trader who requested it.
