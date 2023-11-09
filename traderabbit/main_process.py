@@ -46,10 +46,16 @@ async def async_handle_exit(loop ,trading_system = None , traders=()):
 
 def handle_exit(loop, trading_system=None, traders=()):
     loop.create_task(async_handle_exit(loop, trading_system,  traders))
-
+def custom_exception_handler(loop, context):
+    # First, handle the exception however you want
+    logger.critical(f"Caught an unhandled exception: {context['exception']}")
+    # Then, stop the event loop
+    loop.stop()
 
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
+    loop.set_exception_handler(custom_exception_handler)
+
     trading_system = TradingSystem(buffer_delay=0)
     num_traders = 3
     traders = [Trader(trader_type=TraderType.NOISE) for _ in range(num_traders)]

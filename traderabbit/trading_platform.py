@@ -173,7 +173,7 @@ class TradingSystem:
             clear_result = await self.clear_orders()
             transactions = clear_result['transactions']
             removed_order_ids = clear_result['removed_active_orders']
-            logger.critical(f'how many transactions: {len(transactions)}')
+
             for transaction in transactions:
                 # Determine the most recent order (ask or bid) based on the timestamp
                 ask_order = self.all_orders[transaction['ask_order_id']]
@@ -204,9 +204,9 @@ class TradingSystem:
                 # Accumulate book records for new limit orders
                 book_record = convert_to_book_format(self.active_orders.values())
                 new_books.append((book_record, common_timestamp.timestamp()))
-            logger.critical(f'number of new book records: {len(new_books)}')
-            logger.critical(f'number of new messages: {len(new_messages)}')
-
+            logger.info(f'number of new book records: {len(new_books)}')
+            logger.info(f'number of new messages: {len(new_messages)}')
+            assert len(new_books) == len(new_messages), "Number of new books and messages should be the same"
 
             self.buffered_orders.clear()
             self.release_task = None  # Reset the task so it can be recreated
@@ -218,6 +218,7 @@ class TradingSystem:
                                                    ))
 
     async def  clear_orders(self):
+        res= {'transactions': [], 'removed_active_orders': []}
         logger.info(f'Total amount of active orders: {len(self.active_orders)}')
         # Separate active orders into asks and bids
         asks = [order for order in self.active_orders.values() if order['order_type'] == OrderType.ASK.value]
@@ -236,14 +237,14 @@ class TradingSystem:
             spread = lowest_ask - highest_bid
         else:
             logger.critical("No overlapping orders.")
-            return
+            return res
 
         # Check if any transactions are possible
         if spread > 0:
             logger.info(
                 f"No overlapping orders. Spread is positive: {spread}. Lowest ask: {lowest_ask}, highest bid: {highest_bid}")
 
-            return
+            return res
 
         logger.info(f"Spread: {spread}")
         # Filter the bids and asks that could be involved in a transaction
@@ -284,7 +285,11 @@ class TradingSystem:
         # Log the number of cleared and transacted orders
         logger.info(f"Cleared {len(to_remove)} orders.")
         logger.info(f"Created {len(transactions)} transactions.")
-        return dict(removed_active_orders=to_remove, transactions=transactions)
+        res['removed_active_orders'] = to_remove
+        res['transactions'] = transactions
+        return res
+
+
 
     async def handle_add_order(self, data: dict):
         # TODO: Validate the order
