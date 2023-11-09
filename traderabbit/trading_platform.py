@@ -101,31 +101,7 @@ class TradingSystem:
             routing_key=f'trader_{trader_id}'
         )
 
-    def get_file_name(self):
-        """Returns file name for messages which is a trading platform id + datetime of creation with _ as spaces"""
-        return f"{self.id}_{self.creation_time.strftime('%Y-%m-%d_%H-%M-%S')}"
 
-    async def place_order(self, order_dict: Dict, trader_id: uuid.UUID):
-        """ This one is called by handle_add_order, and is the one that actually places the order in the system.
-        It adds automatically - we do all the validation (whether a trader allowed to place an order, etc) in the
-        handle_add_order method.
-        """
-        order_id = order_dict['id']
-        timestamp = order_dict['timestamp']
-        order_dict.update({
-            'status': OrderStatus.ACTIVE.value,
-        })
-        self.all_orders[order_id] = order_dict
-
-        # then we add a record in a LOBSTER format to the csv file
-        trader_type = self.connected_traders[trader_id]['trader_type']
-        lobster_message = create_lobster_message(order_dict, event_type=LobsterEventType.NEW_LIMIT_ORDER,
-                                                 trader_type=trader_type,
-                                                 timestamp=timestamp)
-
-        await append_lobster_message_to_csv(lobster_message, self.get_file_name())
-
-        return order_dict
 
     async def add_order_to_buffer(self, order):
         async with self.lock:
@@ -148,6 +124,32 @@ class TradingSystem:
         """ Returns a list of all active orders. When we switch to real DB or mongo, we won't need it anymore."""
         return list(self.active_orders.values())
 
+    def get_file_name(self):
+        # todo: rename this to get_message_file_name
+        """Returns file name for messages which is a trading platform id + datetime of creation with _ as spaces"""
+        return f"{self.id}_{self.creation_time.strftime('%Y-%m-%d_%H-%M-%S')}"
+
+    async def place_order(self, order_dict: Dict, trader_id: uuid.UUID):
+        """ This one is called by handle_add_order, and is the one that actually places the order in the system.
+        It adds automatically - we do all the validation (whether a trader allowed to place an order, etc) in the
+        handle_add_order method.
+        """
+        order_id = order_dict['id']
+        timestamp = order_dict['timestamp']
+        order_dict.update({
+            'status': OrderStatus.ACTIVE.value,
+        })
+        self.all_orders[order_id] = order_dict
+        # todo: the following should be redone in such a way that messages will be added only if no transactions happened
+        # then we add a record in a LOBSTER format to the csv file
+        trader_type = self.connected_traders[trader_id]['trader_type']
+        lobster_message = create_lobster_message(order_dict, event_type=LobsterEventType.NEW_LIMIT_ORDER,
+                                                 trader_type=trader_type,
+                                                 timestamp=timestamp)
+
+        await append_lobster_message_to_csv(lobster_message, self.get_file_name())
+
+        return order_dict
     async def release_buffered_orders(self):
         sleep_task = asyncio.create_task(asyncio.sleep(self.buffer_delay))
         release_event_task = asyncio.create_task(self.release_event.wait())

@@ -1,4 +1,5 @@
 
+
 ### Short Description of the Trading System Structure
 
 #### Files Overview:
