@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description='Your Script Description')
 
 # Define Arguments
 parser.add_argument('--buffer_delay', type=int, default=0, help='Buffer delay for the Trading System')
-parser.add_argument('--max_buffer_releases', type=int, default=10, help='Maximum number of buffer releases')
+parser.add_argument('--max_buffer_releases', type=int, default=None, help='Maximum number of buffer releases')
 parser.add_argument('--num_traders', type=int, default=3, help='Number of traders')
 
 
