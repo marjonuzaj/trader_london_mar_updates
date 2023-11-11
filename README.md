@@ -38,6 +38,30 @@ python -m traderabbit.main_process
 
 This command will initiate both the trading system and the trader as part of the same process. They will communicate with each other via RabbitMQ queues.
 
+
+## Application Parameters
+
+When running the application, you can specify the following command-line parameters:
+
+1. `--buffer_delay`: The delay in seconds before the Trading System processes the buffered orders. 
+   - Default: `5`
+   - Usage: `--buffer_delay 5`
+
+2. `--max_buffer_releases`: The maximum number of buffer releases allowed before the Trading System stops. 
+   - Default: `10`
+   - Usage: `--max_buffer_releases 10`
+
+3. `--num_traders`: The number of trader instances to run. 
+   - Default: `3`
+   - Usage: `--num_traders 3`
+
+These parameters allow you to customize the behavior of the Trading System and the traders. You can specify these parameters when running the application as shown in the example below:
+
+```bash
+python -m traderabbit.main_process --buffer_delay 5 --max_buffer_releases 10 --num_traders 3
+```
+
+
 ### Running as Separate Processes
 
 Alternatively, you can run the trading system and the trader as separate processes. This can be useful for development or debugging purposes.

@@ -1,5 +1,5 @@
 import asyncio
-import random
+import argparse
 from traderabbit.custom_logger import setup_custom_logger
 from traderabbit.trader import Trader
 from traderabbit.trading_platform import TradingSystem
@@ -8,26 +8,41 @@ from structures.structures import TraderType
 logger = setup_custom_logger(__name__)
 
 
+
+# Define the Argument Parser
+parser = argparse.ArgumentParser(description='Your Script Description')
+
+# Define Arguments
+parser.add_argument('--buffer_delay', type=int, default=0, help='Buffer delay for the Trading System')
+parser.add_argument('--max_buffer_releases', type=int, default=10, help='Maximum number of buffer releases')
+parser.add_argument('--num_traders', type=int, default=3, help='Number of traders')
+
+
 async def main(trading_system, traders=()):
     await trading_system.initialize()
     trading_session_uuid = trading_system.id
     logger.info(f"Trading session UUID: {trading_session_uuid}")
-    for i in traders:
-        await i.initialize()
-        await i.connect_to_session(trading_session_uuid=trading_session_uuid)
+
+    for trader in traders:
+        await trader.initialize()
+        await trader.connect_to_session(trading_session_uuid=trading_session_uuid)
 
     await trading_system.send_broadcast({"content": "Market is open"})
 
-    trader_tasks = []
-    for i in traders:
-        trader_tasks.append(asyncio.create_task(i.run()))
-
     trading_system_task = asyncio.create_task(trading_system.run())
+    trader_tasks = [asyncio.create_task(i.run()) for i in traders]
 
-    await asyncio.gather(trading_system_task, *trader_tasks)
+    await trading_system_task
+    # Wait for the trading system to complete
+    await trading_system_task
 
+    # Once the trading system has stopped, cancel all trader tasks
+    for task in trader_tasks:
+        task.cancel()
 
-async def async_handle_exit(loop ,trading_system = None , traders=()):
+    # Optionally, wait for all trader tasks to be cancelled
+    await asyncio.gather(*trader_tasks, return_exceptions=True)
+async def async_handle_exit(loop, trading_system=None, traders=()):
     if trading_system:
         await trading_system.clean_up()
     for i in traders:
@@ -43,9 +58,9 @@ async def async_handle_exit(loop ,trading_system = None , traders=()):
 
     loop.stop()
 
-
 def handle_exit(loop, trading_system=None, traders=()):
-    loop.create_task(async_handle_exit(loop, trading_system,  traders))
+    loop.create_task(async_handle_exit(loop, trading_system, traders))
+
 def custom_exception_handler(loop, context):
     # First, handle the exception however you want
     logger.critical(f"Caught an unhandled exception: {context['exception']}")
@@ -55,10 +70,15 @@ def custom_exception_handler(loop, context):
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.set_exception_handler(custom_exception_handler)
+    args = parser.parse_args()
 
-    trading_system = TradingSystem(buffer_delay=0)
-    num_traders = 3
-    traders = [Trader(trader_type=TraderType.NOISE) for _ in range(num_traders)]
+    # Use the Arguments
+    trading_system = TradingSystem(buffer_delay=args.buffer_delay, max_buffer_releases=args.max_buffer_releases)
+    traders = [Trader(trader_type=TraderType.NOISE) for _ in range(args.num_traders)]
+    # Rest of your script...
+    # Initialize TradingSystem with the buffer delay and optionally the max_buffer_releases
+
+
 
 
     # Add the signal handler for Ctrl+C and SIGTERM

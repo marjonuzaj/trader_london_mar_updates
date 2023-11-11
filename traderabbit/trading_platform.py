@@ -30,11 +30,14 @@ class TradingSystem:
     def active_orders(self):
         return {k: v for k, v in self.all_orders.items() if v['status'] == OrderStatus.ACTIVE}
 
-    def __init__(self, buffer_delay=5):
+    def __init__(self, buffer_delay=5, max_buffer_releases=None):
         """
         buffer_delay: The delay in seconds before the Trading System processes the buffered orders.
         """
         # self.id = uuid.uuid4()
+        self.max_buffer_releases = max_buffer_releases
+        logger.critical(f"Max buffer releases: {self.max_buffer_releases}")
+        self.buffer_release_count = 0
         self.id = "1234"  # for testing purposes
         self.creation_time = datetime.utcnow()
         self.all_orders = {}
@@ -101,8 +104,6 @@ class TradingSystem:
             routing_key=f'trader_{trader_id}'
         )
 
-
-
     async def add_order_to_buffer(self, order):
         async with self.lock:
             trader_id = order['trader_id']
@@ -116,7 +117,7 @@ class TradingSystem:
                 self.release_task = asyncio.create_task(self.release_buffered_orders())
             return dict(message="Order added to buffer", order=order,
                         # TODO: this is an ugly fix.... let's think how to deal with all that later
-                        orders=self.list_active_orders+list(self.buffered_orders.values())
+                        orders=self.list_active_orders + list(self.buffered_orders.values())
                         )
 
     @property
@@ -142,6 +143,7 @@ class TradingSystem:
         self.all_orders[order_id] = order_dict
 
         return order_dict
+
     async def release_buffered_orders(self):
         sleep_task = asyncio.create_task(asyncio.sleep(self.buffer_delay))
         release_event_task = asyncio.create_task(self.release_event.wait())
@@ -151,6 +153,7 @@ class TradingSystem:
                             ], return_when=asyncio.FIRST_COMPLETED)
 
         async with self.lock:
+
             common_timestamp = datetime.utcnow()
             new_messages = []  # List to store new message records
             new_books = []  # List to store new book records
@@ -168,7 +171,7 @@ class TradingSystem:
                 clear_result = {'transactions': [], 'removed_active_orders': []}
             transactions = clear_result['transactions']
             removed_order_ids = clear_result['removed_active_orders']
-            logger.critical(f"Total of {len(transactions)} transactions created")
+            logger.info(f"Total of {len(transactions)} transactions created")
             # Process executed transactions
             for transaction in transactions:
                 # Determine the most recent order (ask or bid) based on the timestamp
@@ -186,7 +189,6 @@ class TradingSystem:
                 # Create one book record for the transaction
                 book_record = convert_to_book_format(self.active_orders.values())
                 new_books.append((book_record, transaction['timestamp'].timestamp()))
-
 
             # Process non-executed buffered orders
             for order_id, order in self.buffered_orders.items():
@@ -210,7 +212,6 @@ class TradingSystem:
             await append_order_books_to_csv(new_books, self.get_file_name())
             await append_lobster_messages_to_csv(new_messages, self.get_file_name())
 
-
             # Clear the buffered orders
             self.buffered_orders.clear()
             self.release_task = None  # Reset the task so it can be recreated
@@ -218,11 +219,24 @@ class TradingSystem:
             # TODO: let's think about the depth of the order book to send; and also do we need all transactions??
             await self.send_broadcast(message=dict(message="Buffer released",
                                                    # TODO: this is an ugly fix.... let's think how to deal with all that later
-                                                   orders=self.list_active_orders+list(self.buffered_orders.values())
+                                                   orders=self.list_active_orders + list(self.buffered_orders.values())
                                                    ))
+            # Increment the buffer release count
+            self.buffer_release_count += 1
 
-    async def  clear_orders(self):
-        res= {'transactions': [], 'removed_active_orders': []}
+
+
+
+    def check_counters(self):
+
+        """ Checks if the buffer release count exceeds the limit. """
+        logger.info(f'self.buffer_release_count {self.buffer_release_count}')
+        if self.max_buffer_releases is not None and self.buffer_release_count >= self.max_buffer_releases:
+            return True
+        return False
+
+    async def clear_orders(self):
+        res = {'transactions': [], 'removed_active_orders': []}
         logger.info(f'Total amount of active orders: {len(self.active_orders)}')
         # Separate active orders into asks and bids
         asks = [order for order in self.active_orders.values() if order['order_type'] == OrderType.ASK.value]
@@ -261,7 +275,6 @@ class TradingSystem:
 
         # Create transactions
         while viable_asks and viable_bids:
-
             ask = viable_asks.pop(0)
             bid = viable_bids.pop(0)
 
@@ -292,8 +305,6 @@ class TradingSystem:
         res['removed_active_orders'] = to_remove
         res['transactions'] = transactions
         return res
-
-
 
     async def handle_add_order(self, data: dict):
         # TODO: Validate the order
@@ -359,7 +370,7 @@ class TradingSystem:
             # Note that we're creating a list of tuples for the order books as well
             await append_order_books_to_csv([(order_book, timestamp.timestamp())], self.get_file_name())
 
-            logger.critical(f"Order {order_id} has been canceled for trader {trader_id}.")
+            logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
 
             # Broadcast the cancellation, implementation may vary based on your system's logic
             await self.broadcast_order_cancellation(trader_id)
@@ -408,8 +419,11 @@ class TradingSystem:
             logger.warning(f"No action found in message: {incoming_message}")
 
     async def run(self):
-        """
-        keeps system active
-        """
+        """ Keeps system active. Stops if the buffer release limit is reached. """
         while True:
+            logger.info('Checking counters...')
+            if self.check_counters():
+                logger.critical('Counter limit reached, stopping...')
+                break
             await asyncio.sleep(1)
+        logger.critical('Exited the run loop.')
