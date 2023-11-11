@@ -48,7 +48,7 @@ When running the application, you can specify the following command-line paramet
    - Usage: `--buffer_delay 5`
 
 2. `--max_buffer_releases`: The maximum number of buffer releases allowed before the Trading System stops. 
-   - Default: `10`
+   - Default: `None` (no limit)
    - Usage: `--max_buffer_releases 10`
 
 3. `--num_traders`: The number of trader instances to run. 
