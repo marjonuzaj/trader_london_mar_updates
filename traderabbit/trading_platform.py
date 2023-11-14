@@ -144,6 +144,21 @@ class TradingSystem:
 
         return order_dict
 
+    def register_message(self, order, transaction_timestamp, event_type, book_format_func):
+        # Generate lobster message
+        message = create_lobster_message(order, event_type=event_type,
+                                         trader_type=self.connected_traders[order['trader_id']]['trader_type'],
+                                         timestamp=transaction_timestamp)
+
+        # Generate book record
+        book_record = book_format_func(self.active_orders.values())
+        combined_row = {
+            'message': message,
+            'book_record': book_record,
+            'timestamp': transaction_timestamp.timestamp()
+        }
+        return combined_row
+
     async def release_buffered_orders(self):
         sleep_task = asyncio.create_task(asyncio.sleep(self.buffer_delay))
         release_event_task = asyncio.create_task(self.release_event.wait())
