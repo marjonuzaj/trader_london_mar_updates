@@ -161,6 +161,52 @@ def convert_to_book_format(active_orders, levels_n=10, default_price=2000):
     return interleaved_array
 
 
+def _append_combined_data_to_csv(combined_data, file_name):
+    try:
+        csv_file_path = os.path.join(DATA_PATH, f"combined_{file_name}.csv")
+
+        # Check if the file exists to decide if headers need to be written
+        write_header = not os.path.exists(csv_file_path)
+
+        with open(csv_file_path, 'a', newline='') as csvfile:
+            lobster_message_fields = ['Trader type', 'Time', 'Event Type', 'Order ID', 'Size', 'Price', 'Direction']
+
+            # Adjust the book fields to interleave ask and bid data
+            book_fields = []
+            for i in range(1, 11):
+                book_fields.extend([f"Ask_Price_{i}", f"Ask_Size_{i}", f"Bid_Price_{i}", f"Bid_Size_{i}"])
+
+            header = ['Buffer Release Count', 'Timestamp'] + lobster_message_fields + book_fields
+
+            writer = csv.writer(csvfile)
+
+            # Write the header only if the file didn't exist
+            if write_header:
+                writer.writerow(header)
+
+            # Write the data for each combined row
+            for row in combined_data:
+                buffer_release_count = row.get('buffer_release_count', 'N/A')  # Get the count or default value
+                timestamp = row['timestamp']
+                lobster_message = [row['message'][field] for field in lobster_message_fields]
+
+                # Process the book record to match the header structure
+                book_record = row['book_record']
+                interleaved_book_record = []
+                for i in range(0, len(book_record), 4):
+                    interleaved_book_record.extend(book_record[i:i + 4])
+
+                writer.writerow([buffer_release_count, timestamp] + lobster_message + interleaved_book_record)
+    except Exception as e:
+        logger.critical(f"Error writing to CSV: {e}")
+
+
+
+async def append_combined_data_to_csv(combined_data, file_name):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, _append_combined_data_to_csv, combined_data, file_name)
+
+
 def convert_active_orders_to_lobster_format(active_orders, levels_n=10):
     # Create a DataFrame from the active orders
     df = pd.DataFrame(active_orders)

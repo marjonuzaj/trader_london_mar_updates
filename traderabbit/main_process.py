@@ -33,8 +33,7 @@ async def main(trading_system, traders=()):
     trader_tasks = [asyncio.create_task(i.run()) for i in traders]
 
     await trading_system_task
-    # Wait for the trading system to complete
-    await trading_system_task
+
 
     # Once the trading system has stopped, cancel all trader tasks
     for task in trader_tasks:

@@ -9,11 +9,11 @@ from structures import OrderStatus, OrderModel, OrderType, TransactionModel, Lob
 import asyncio
 from collections import defaultdict
 from traderabbit.utils import (CustomEncoder,
-
                                create_lobster_message,
                                append_lobster_messages_to_csv,
                                convert_to_book_format,
-                               append_order_books_to_csv
+                               append_order_books_to_csv,
+                               append_combined_data_to_csv
                                )
 from asyncio import Lock, Event
 
@@ -144,15 +144,18 @@ class TradingSystem:
 
         return order_dict
 
-    def register_message(self, order, transaction_timestamp, event_type, book_format_func):
+    def register_message(self, order, transaction_timestamp, event_type):
         # Generate lobster message
+
         message = create_lobster_message(order, event_type=event_type,
                                          trader_type=self.connected_traders[order['trader_id']]['trader_type'],
                                          timestamp=transaction_timestamp)
 
-        # Generate book record
-        book_record = book_format_func(self.active_orders.values())
+        # Generate book record using convert_to_book_format directly
+        book_record = convert_to_book_format(self.active_orders.values())
+
         combined_row = {
+            'buffer_release_count': self.buffer_release_count,
             'message': message,
             'book_record': book_record,
             'timestamp': transaction_timestamp.timestamp()
@@ -168,67 +171,52 @@ class TradingSystem:
                             ], return_when=asyncio.FIRST_COMPLETED)
 
         async with self.lock:
-
             common_timestamp = datetime.utcnow()
-            new_messages = []  # List to store new message records
-            new_books = []  # List to store new book records
-
+            combined_data = []
             for trader_id, order_dict in self.buffered_orders.items():
+                # Set the timestamp for the order
                 order_dict['timestamp'] = common_timestamp
 
+                # Place the order
                 await self.place_order(order_dict, trader_id)
+
+                # Try to make a transaction with the newly placed order
+                clear_result = await self.clear_orders()
+
+                # Initialize the container for transactions
+                if clear_result is None:
+                    clear_result = {'transactions': [], 'removed_active_orders': []}
+                transactions = clear_result['transactions']
+                removed_order_ids = clear_result['removed_active_orders']
+
+                # Handle transactions
+                for transaction in transactions:
+                    # Determine the most recent order (ask or bid) based on the timestamp
+                    ask_order = self.all_orders[transaction['ask_order_id']]
+                    bid_order = self.all_orders[transaction['bid_order_id']]
+                    most_recent_order = ask_order if ask_order['timestamp'] > bid_order['timestamp'] else bid_order
+
+                    # Create and append the transaction message
+                    combined_row = self.register_message(most_recent_order, transaction['timestamp'],
+                                                         LobsterEventType.EXECUTION_VISIBLE)
+                    combined_data.append(combined_row)
+
+                # If no transaction was made, register the order as a new active order
+                order_id = str(order_dict['id'])
+                if order_id not in removed_order_ids:
+                    combined_row = self.register_message(order_dict, common_timestamp,
+                                                         LobsterEventType.NEW_LIMIT_ORDER)
+                    combined_data.append(combined_row)
 
             logger.info(f"Total of {len(self.buffered_orders)} orders released from buffer")
             # Clear orders and get transactions and ids of removed orders
-            clear_result = await self.clear_orders()
 
-            if clear_result is None:
-                clear_result = {'transactions': [], 'removed_active_orders': []}
-            transactions = clear_result['transactions']
-            removed_order_ids = clear_result['removed_active_orders']
-            logger.info(f"Total of {len(transactions)} transactions created")
-            # Process executed transactions
-            for transaction in transactions:
-                # Determine the most recent order (ask or bid) based on the timestamp
-                ask_order = self.all_orders[transaction['ask_order_id']]
-                bid_order = self.all_orders[transaction['bid_order_id']]
-                most_recent_order = ask_order if ask_order['timestamp'] > bid_order['timestamp'] else bid_order
-
-                # Create one message for the most recent order involved in the transaction
-                message = create_lobster_message(most_recent_order, event_type=LobsterEventType.EXECUTION_VISIBLE,
-                                                 trader_type=self.connected_traders[most_recent_order['trader_id']][
-                                                     'trader_type'],
-                                                 timestamp=transaction['timestamp'])
-                new_messages.append(message)
-
-                # Create one book record for the transaction
-                book_record = convert_to_book_format(self.active_orders.values())
-                new_books.append((book_record, transaction['timestamp'].timestamp()))
-
-            # Process non-executed buffered orders
-            for order_id, order in self.buffered_orders.items():
-                if order_id not in removed_order_ids:
-                    # Accumulate messages for new limit orders
-                    message = create_lobster_message(order, event_type=LobsterEventType.NEW_LIMIT_ORDER,
-                                                     trader_type=self.connected_traders[order['trader_id']][
-                                                         'trader_type'],
-                                                     timestamp=order['timestamp'])
-                    new_messages.append(message)
-
-                    # Accumulate book records for new limit orders
-                    book_record = convert_to_book_format(self.active_orders.values())
-                    new_books.append((book_record, common_timestamp.timestamp()))
-
-            logger.info(f'number of new book records: {len(new_books)}')
-            logger.info(f'number of new messages: {len(new_messages)}')
-            assert len(new_books) == len(new_messages), "Number of new books and messages should be the same"
-
-            # # Append new book records and messages to the CSV
-            await append_order_books_to_csv(new_books, self.get_file_name())
-            await append_lobster_messages_to_csv(new_messages, self.get_file_name())
+            if combined_data:
+                await append_combined_data_to_csv(combined_data, self.get_file_name())
 
             # Clear the buffered orders
             self.buffered_orders.clear()
+
             self.release_task = None  # Reset the task so it can be recreated
             self.release_event.clear()  # Reset the event
             # TODO: let's think about the depth of the order book to send; and also do we need all transactions??
@@ -237,10 +225,9 @@ class TradingSystem:
                                                    orders=self.list_active_orders + list(self.buffered_orders.values())
                                                    ))
             # Increment the buffer release count
+
             self.buffer_release_count += 1
-
-
-
+            logger.critical(f"Buffer release count: {self.buffer_release_count}")
 
     def check_counters(self):
 
@@ -309,7 +296,7 @@ class TradingSystem:
             )
             transactions.append(transaction.model_dump())
 
-            to_remove.extend([ask['id'], bid['id']])
+            to_remove.extend([str(ask['id']), str(bid['id'])])
 
         # Add transactions to self.transactions
         self.transactions.extend(transactions)
@@ -371,19 +358,11 @@ class TradingSystem:
             timestamp = datetime.utcnow()
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
 
-            # Create a LOBSTER message for the cancel event
-            trader_type = self.connected_traders[trader_id]['trader_type']
-            lobster_message = create_lobster_message(existing_order, event_type=LobsterEventType.CANCELLATION_TOTAL,
-                                                     trader_type=trader_type,
-                                                     timestamp=timestamp)
+            # Create a combined row for the cancel event
+            combined_row = self.register_message(existing_order, timestamp, LobsterEventType.CANCELLATION_TOTAL)
 
-            # Append the message to the CSV, note that we're wrapping it in a list
-            await append_lobster_messages_to_csv([lobster_message], self.get_file_name())
-
-            # Create the order book record for the current state and append to CSV
-            order_book = convert_to_book_format(self.active_orders.values())
-            # Note that we're creating a list of tuples for the order books as well
-            await append_order_books_to_csv([(order_book, timestamp.timestamp())], self.get_file_name())
+            # Append the combined row to the CSV
+            await append_combined_data_to_csv([combined_row], self.get_file_name())
 
             logger.info(f"Order {order_id} has been canceled for trader {trader_id}.")
 
