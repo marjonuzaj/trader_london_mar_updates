@@ -107,6 +107,7 @@ class TradingSystem:
 
     async def add_order_to_buffer(self, order):
         async with self.lock:
+            logger.info(f"Adding order to buffer: {order}")
             trader_id = order['trader_id']
             self.buffered_orders[trader_id] = order
             # self.buffered_orders[trader_id] = order.model_dump()
@@ -165,6 +166,7 @@ class TradingSystem:
         return combined_row
 
     async def release_buffered_orders(self):
+        logger.info(f'total amount of buffered orders: {len(self.buffered_orders)}')
         sleep_task = asyncio.create_task(asyncio.sleep(self.buffer_delay))
         release_event_task = asyncio.create_task(self.release_event.wait())
 
@@ -173,8 +175,10 @@ class TradingSystem:
                             ], return_when=asyncio.FIRST_COMPLETED)
 
         async with self.lock:
-            self.buffer_release_time = datetime.utcnow()
+            logger.info(f'we start releasing orders. total amount to release: {len(self.buffered_orders)}')
 
+            self.buffer_release_time = datetime.utcnow()
+            logger.info(f"Buffer release time: {self.buffer_release_time.timestamp()}")
             combined_data = []
             for trader_id, order_dict in self.buffered_orders.items():
                 # Set the timestamp for the order
@@ -297,6 +301,7 @@ class TradingSystem:
                 timestamp=timestamp,
                 price=transaction_price
             )
+            logger.info(f"Transaction created: {transaction.model_dump()}")
             transactions.append(transaction.model_dump())
 
             to_remove.extend([str(ask['id']), str(bid['id'])])
