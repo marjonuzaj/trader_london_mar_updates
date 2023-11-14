@@ -169,14 +169,15 @@ def _append_combined_data_to_csv(combined_data, file_name):
         write_header = not os.path.exists(csv_file_path)
 
         with open(csv_file_path, 'a', newline='') as csvfile:
-            lobster_message_fields = ['Trader type', 'Time', 'Event Type', 'Order ID', 'Size', 'Price', 'Direction']
+            lobster_message_fields = ['Trader type',  'Event Type', 'Order ID', 'Size', 'Price', 'Direction']
 
             # Adjust the book fields to interleave ask and bid data
             book_fields = []
             for i in range(1, 11):
                 book_fields.extend([f"Ask_Price_{i}", f"Ask_Size_{i}", f"Bid_Price_{i}", f"Bid_Size_{i}"])
 
-            header = ['Buffer Release Count', 'Timestamp'] + lobster_message_fields + book_fields
+            header = ['Buffer Release Count', 'Original Timestamp', 'Buffer Release Timestamp',
+                      ] + lobster_message_fields + book_fields
 
             writer = csv.writer(csvfile)
 
@@ -186,8 +187,10 @@ def _append_combined_data_to_csv(combined_data, file_name):
 
             # Write the data for each combined row
             for row in combined_data:
-                buffer_release_count = row.get('buffer_release_count', 'N/A')  # Get the count or default value
-                timestamp = row['timestamp']
+                buffer_release_count = row.get('buffer_release_count', 'N/A')
+                original_timestamp = row.get('original_timestamp', 'N/A')
+                buffer_release_timestamp = row.get('buffer_release_timestamp', 'N/A')
+
                 lobster_message = [row['message'][field] for field in lobster_message_fields]
 
                 # Process the book record to match the header structure
@@ -196,7 +199,8 @@ def _append_combined_data_to_csv(combined_data, file_name):
                 for i in range(0, len(book_record), 4):
                     interleaved_book_record.extend(book_record[i:i + 4])
 
-                writer.writerow([buffer_release_count, timestamp] + lobster_message + interleaved_book_record)
+                writer.writerow([buffer_release_count, original_timestamp, buffer_release_timestamp
+                                 ] + lobster_message + interleaved_book_record)
     except Exception as e:
         logger.critical(f"Error writing to CSV: {e}")
 

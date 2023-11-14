@@ -38,6 +38,7 @@ class TradingSystem:
         self.max_buffer_releases = max_buffer_releases
         logger.critical(f"Max buffer releases: {self.max_buffer_releases}")
         self.buffer_release_count = 0
+        self.buffer_release_time = None
         self.id = "1234"  # for testing purposes
         self.creation_time = datetime.utcnow()
         self.all_orders = {}
@@ -144,21 +145,22 @@ class TradingSystem:
 
         return order_dict
 
-    def register_message(self, order, transaction_timestamp, event_type):
+    def register_message(self, order, event_type):
         # Generate lobster message
 
-        message = create_lobster_message(order, event_type=event_type,
+        lobster_message = create_lobster_message(order, event_type=event_type,
                                          trader_type=self.connected_traders[order['trader_id']]['trader_type'],
-                                         timestamp=transaction_timestamp)
+                                         timestamp=order['timestamp'])
 
         # Generate book record using convert_to_book_format directly
         book_record = convert_to_book_format(self.active_orders.values())
 
         combined_row = {
-            'buffer_release_count': self.buffer_release_count,
-            'message': message,
+            'message': lobster_message,
             'book_record': book_record,
-            'timestamp': transaction_timestamp.timestamp()
+            'original_timestamp': order['original_timestamp'].timestamp(),  # Include original timestamp
+            'buffer_release_timestamp': order['timestamp'].timestamp() , # Include buffer release timestamp
+            'buffer_release_count': self.buffer_release_count,
         }
         return combined_row
 
@@ -171,11 +173,13 @@ class TradingSystem:
                             ], return_when=asyncio.FIRST_COMPLETED)
 
         async with self.lock:
-            common_timestamp = datetime.utcnow()
+            self.buffer_release_time = datetime.utcnow()
+
             combined_data = []
             for trader_id, order_dict in self.buffered_orders.items():
                 # Set the timestamp for the order
-                order_dict['timestamp'] = common_timestamp
+                order_dict['original_timestamp'] = order_dict['timestamp']
+                order_dict['timestamp'] = self.buffer_release_time
 
                 # Place the order
                 await self.place_order(order_dict, trader_id)
@@ -197,20 +201,19 @@ class TradingSystem:
                     most_recent_order = ask_order if ask_order['timestamp'] > bid_order['timestamp'] else bid_order
 
                     # Create and append the transaction message
-                    combined_row = self.register_message(most_recent_order, transaction['timestamp'],
+                    combined_row = self.register_message(most_recent_order,
                                                          LobsterEventType.EXECUTION_VISIBLE)
                     combined_data.append(combined_row)
 
                 # If no transaction was made, register the order as a new active order
                 order_id = str(order_dict['id'])
                 if order_id not in removed_order_ids:
-                    combined_row = self.register_message(order_dict, common_timestamp,
+                    combined_row = self.register_message(order_dict,
                                                          LobsterEventType.NEW_LIMIT_ORDER)
                     combined_data.append(combined_row)
 
             logger.info(f"Total of {len(self.buffered_orders)} orders released from buffer")
             # Clear orders and get transactions and ids of removed orders
-
             if combined_data:
                 await append_combined_data_to_csv(combined_data, self.get_file_name())
 
@@ -359,7 +362,7 @@ class TradingSystem:
             self.all_orders[order_id]['status'] = OrderStatus.CANCELLED.value
 
             # Create a combined row for the cancel event
-            combined_row = self.register_message(existing_order, timestamp, LobsterEventType.CANCELLATION_TOTAL)
+            combined_row = self.register_message(existing_order,  LobsterEventType.CANCELLATION_TOTAL)
 
             # Append the combined row to the CSV
             await append_combined_data_to_csv([combined_row], self.get_file_name())
