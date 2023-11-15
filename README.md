@@ -55,10 +55,14 @@ When running the application, you can specify the following command-line paramet
    - Default: `3`
    - Usage: `--num_traders 3`
 
+4. `--seed`: Seed number for replication
+   - Default: `None` (not set)
+   - Usage: `--seed 1`
+
 These parameters allow you to customize the behavior of the Trading System and the traders. You can specify these parameters when running the application as shown in the example below:
 
 ```bash
-python -m traderabbit.main_process --buffer_delay 5 --max_buffer_releases 10 --num_traders 3
+python -m traderabbit.main_process --buffer_delay 5 --max_buffer_releases 10 --num_traders 3 --seed 1
 ```
 
 
