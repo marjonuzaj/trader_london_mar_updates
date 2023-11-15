@@ -5,6 +5,8 @@ from traderabbit.trader import Trader
 from traderabbit.trading_platform import TradingSystem
 import signal
 from structures.structures import TraderType
+import random
+import numpy as np
 logger = setup_custom_logger(__name__)
 
 
@@ -16,6 +18,7 @@ parser = argparse.ArgumentParser(description='Your Script Description')
 parser.add_argument('--buffer_delay', type=int, default=0, help='Buffer delay for the Trading System')
 parser.add_argument('--max_buffer_releases', type=int, default=None, help='Maximum number of buffer releases')
 parser.add_argument('--num_traders', type=int, default=3, help='Number of traders')
+parser.add_argument('--seed', type=int, help='Seed for the random number generator', default=None)
 
 
 async def main(trading_system, traders=()):
@@ -71,6 +74,10 @@ if __name__ == "__main__":
     loop.set_exception_handler(custom_exception_handler)
     args = parser.parse_args()
 
+    # Set the seed here
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
     # Use the Arguments
     trading_system = TradingSystem(buffer_delay=args.buffer_delay, max_buffer_releases=args.max_buffer_releases)
     traders = [Trader(trader_type=TraderType.NOISE) for _ in range(args.num_traders)]
