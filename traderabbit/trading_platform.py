@@ -185,11 +185,22 @@ class TradingSystem:
                 order_dict['original_timestamp'] = order_dict['timestamp']
                 order_dict['timestamp'] = self.buffer_release_time
 
-                # Place the order
-                await self.place_order(order_dict, trader_id)
+                order_amount = order_dict['amount']
+                if order_amount > 1:
+                    for _ in range(order_amount):
+                        split_order = order_dict.copy()
+                        split_order['parent_id'] = order_dict['id']
+                        split_order['id'] = uuid.uuid4()  # Generate a new UUID for each split order
+                        split_order['amount'] = 1
+                        logger.info(f'Placing split order: {split_order}')
+                        await self.place_order(split_order, trader_id)
 
-                # Try to make a transaction with the newly placed order
+                else:
+                    logger.info(f'Placing order: {order_dict}')
+                    await self.place_order(order_dict, trader_id)
                 clear_result = await self.clear_orders()
+
+
 
                 # Initialize the container for transactions
                 if clear_result is None:
@@ -422,10 +433,16 @@ class TradingSystem:
 
     async def run(self):
         """ Keeps system active. Stops if the buffer release limit is reached. """
-        while True:
-            logger.info('Checking counters...')
-            if self.check_counters():
-                logger.critical('Counter limit reached, stopping...')
-                break
-            await asyncio.sleep(1)
-        logger.critical('Exited the run loop.')
+        try:
+            while True:
+                logger.info('Checking counters...')
+                if self.check_counters():
+                    logger.critical('Counter limit reached, stopping...')
+                    break
+                await asyncio.sleep(1)
+            logger.critical('Exited the run loop.')
+        except Exception as e:
+            # Handle the exception here
+            logger.error(f"Exception in trading session run: {e}")
+            # Optionally re-raise the exception if you want it to be propagated
+            raise

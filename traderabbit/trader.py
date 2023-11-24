@@ -8,7 +8,7 @@ from datetime import datetime
 from traderabbit.utils import ack_message, convert_to_noise_state, convert_to_book_format, convert_to_trader_actions
 from traderabbit.custom_logger import setup_custom_logger
 from pprint import pprint
-from traders.noise_trader import get_noise_rule, get_signal_noise, settings_noise, settings
+from traders.noise_trader import get_noise_rule, get_signal_noise, settings_noise, settings, get_noise_rule_unif
 import numpy as np
 
 logger = setup_custom_logger(__name__)
@@ -157,11 +157,10 @@ class Trader:
         #  what if order is not found? what if order is not yours?)
         logger.warning(f"Trader {self.id} sent cancel order request: {cancel_order_request}")
 
-
     async def find_and_cancel_order(self, price):
         """finds the order with the given price and cancels it"""
         for order in self.orders:
-            if order['price']  == price:
+            if order['price'] == price:
                 await self.send_cancel_order_request(order['id'])
                 self.orders.remove(order)
                 return
@@ -170,19 +169,23 @@ class Trader:
         logger.warning(f'Available prices are: {[order.get("price") for order in self.orders]}')
 
     async def run(self):
+        try:
+            while True:
+                orders_to_do = self.generate_noise_orders()
+                for order in orders_to_do:
+                    if order['action_type'] == ActionType.POST_NEW_ORDER.value:
+                        order_type_str = order['order_type']
+                        order_type_value = OrderType[order_type_str.upper()]
+                        await self.post_new_order(order['amount'], order['price'], order_type_value)
+                    elif order['action_type'] == ActionType.CANCEL_ORDER.value:
+                        await self.find_and_cancel_order(order['price'])
 
-        while True:
-            orders_to_do = self.generate_noise_orders()
-            for order in orders_to_do:
-                if order['action_type'] == ActionType.POST_NEW_ORDER.value:
-                    order_type_str = order['order_type']
-                    order_type_value = OrderType[order_type_str.upper()]
-                    await self.post_new_order(order['amount'], order['price'], order_type_value)
-                elif order['action_type'] == ActionType.CANCEL_ORDER.value:
-                    await self.find_and_cancel_order(order['price'])
-
-            await asyncio.sleep(0.5)  # LEt's post them every second. TODO: REMOVE THIS
-            # await asyncio.sleep(random.uniform(2, 5))  # Wait between 2 to 5 seconds before posting the next order
+                await asyncio.sleep(0.5)  # LEt's post them every second. TODO: REMOVE THIS
+        except Exception as e:
+            # Handle the exception here
+            logger.error(f"Exception in trader run: {e}")
+            # Optionally re-raise the exception if you want it to be propagated
+            raise
 
     def generate_noise_orders(self):
         # Convert the active orders to the book format understood by get_noise_rule
@@ -197,7 +200,9 @@ class Trader:
         signal_noise = get_signal_noise(signal_state=None, settings_noise=settings_noise)
         #
         # # Generate noise orders
-        noise_orders = get_noise_rule(book_format, signal_noise, noise_state, settings_noise, settings)
+        # noise_orders = get_noise_rule(book_format, signal_noise, noise_state, settings_noise, settings)
+        # noise_orders = get_noise_rule(book_format, signal_noise, noise_state, settings_noise, settings)
+        noise_orders = get_noise_rule_unif(book_format, signal_noise, noise_state, settings_noise, settings)
         converted_noise_orders = convert_to_trader_actions(noise_orders)
 
         return converted_noise_orders

@@ -43,7 +43,13 @@ async def main(trading_system, traders=()):
         task.cancel()
 
     # Optionally, wait for all trader tasks to be cancelled
-    await asyncio.gather(*trader_tasks, return_exceptions=True)
+    try:
+        await asyncio.gather(*trader_tasks, return_exceptions=True)
+    except Exception:
+        # Handle the propagated exception here (e.g., log it, perform cleanup)
+        # Optionally re-raise the exception
+        raise
+
 async def async_handle_exit(loop, trading_system=None, traders=()):
     if trading_system:
         await trading_system.clean_up()
@@ -81,11 +87,7 @@ if __name__ == "__main__":
     # Use the Arguments
     trading_system = TradingSystem(buffer_delay=args.buffer_delay, max_buffer_releases=args.max_buffer_releases)
     traders = [Trader(trader_type=TraderType.NOISE) for _ in range(args.num_traders)]
-    # Rest of your script...
     # Initialize TradingSystem with the buffer delay and optionally the max_buffer_releases
-
-
-
 
     # Add the signal handler for Ctrl+C and SIGTERM
     signal.signal(signal.SIGINT, lambda *args: handle_exit(loop, trading_system, traders))
