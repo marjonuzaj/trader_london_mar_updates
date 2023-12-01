@@ -163,6 +163,9 @@ class TradingSystem:
             'buffer_release_timestamp': order['timestamp'].timestamp() , # Include buffer release timestamp
             'buffer_release_count': self.buffer_release_count,
         }
+        # Add parent_id to combined_row if it exists in the order
+        if 'parent_id' in order:
+            combined_row['parent_id'] = order['parent_id']
         return combined_row
 
     async def release_buffered_orders(self):
@@ -181,6 +184,8 @@ class TradingSystem:
             logger.info(f"Buffer release time: {self.buffer_release_time.timestamp()}")
             combined_data = []
             for trader_id, order_dict in self.buffered_orders.items():
+                # lets create a temp list where we'll put ids of single orders OR splitted orders if amount>1
+                temp_order_ids = []
                 # Set the timestamp for the order
                 order_dict['original_timestamp'] = order_dict['timestamp']
                 order_dict['timestamp'] = self.buffer_release_time
@@ -191,11 +196,15 @@ class TradingSystem:
                         split_order = order_dict.copy()
                         split_order['parent_id'] = order_dict['id']
                         split_order['id'] = uuid.uuid4()  # Generate a new UUID for each split order
+                        # Add the split order to the temp list
+                        temp_order_ids.append(split_order['id'])
                         split_order['amount'] = 1
                         logger.info(f'Placing split order: {split_order}')
                         await self.place_order(split_order, trader_id)
 
                 else:
+                    # Add the order to the temp list
+                    temp_order_ids.append(order_dict['id'])
                     logger.info(f'Placing order: {order_dict}')
                     await self.place_order(order_dict, trader_id)
                 clear_result = await self.clear_orders()
@@ -208,7 +217,7 @@ class TradingSystem:
                 transactions = clear_result['transactions']
                 removed_order_ids = clear_result['removed_active_orders']
 
-                # Handle transactions
+                # Handle transactions logging
                 for transaction in transactions:
                     # Determine the most recent order (ask or bid) based on the timestamp
                     ask_order = self.all_orders[transaction['ask_order_id']]
@@ -221,11 +230,13 @@ class TradingSystem:
                     combined_data.append(combined_row)
 
                 # If no transaction was made, register the order as a new active order
-                order_id = str(order_dict['id'])
-                if order_id not in removed_order_ids:
-                    combined_row = self.register_message(order_dict,
-                                                         LobsterEventType.NEW_LIMIT_ORDER)
-                    combined_data.append(combined_row)
+                for order_id in temp_order_ids:
+                    if str(order_id) not in removed_order_ids:
+                        combined_row = self.register_message(self.all_orders[order_id],
+                                                             LobsterEventType.NEW_LIMIT_ORDER)
+                        combined_data.append(combined_row)
+
+
 
             logger.info(f"Total of {len(self.buffered_orders)} orders released from buffer")
             # Clear orders and get transactions and ids of removed orders
