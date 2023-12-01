@@ -168,6 +168,33 @@ class TradingSystem:
             combined_row['parent_id'] = order['parent_id']
         return combined_row
 
+    async def handle_transaction_for_order(self, order_id, combined_data):
+        clear_result = await self.clear_orders()  # Attempt to clear orders and process transactions
+
+        # Initialize the container for transactions
+        if clear_result is None:
+            clear_result = {'transactions': [], 'removed_active_orders': []}
+        transactions = clear_result['transactions']
+        removed_order_ids = clear_result['removed_active_orders']
+
+        # Handle transactions logging
+        for transaction in transactions:
+            # Determine the most recent order (ask or bid) based on the timestamp
+            ask_order = self.all_orders[transaction['ask_order_id']]
+            bid_order = self.all_orders[transaction['bid_order_id']]
+            most_recent_order = ask_order if ask_order['timestamp'] > bid_order['timestamp'] else bid_order
+
+            # Create and append the transaction message
+            combined_row = self.register_message(most_recent_order, LobsterEventType.EXECUTION_VISIBLE)
+            combined_data.append(combined_row)
+
+        # If no transaction was made, register the order
+        if str(order_id) not in removed_order_ids:
+            combined_row = self.register_message(self.all_orders[order_id], LobsterEventType.NEW_LIMIT_ORDER)
+            combined_data.append(combined_row)
+
+        return combined_data  # Return the updated combined_data
+
     async def release_buffered_orders(self):
         logger.info(f'total amount of buffered orders: {len(self.buffered_orders)}')
         sleep_task = asyncio.create_task(asyncio.sleep(self.buffer_delay))
@@ -201,41 +228,13 @@ class TradingSystem:
                         split_order['amount'] = 1
                         logger.info(f'Placing split order: {split_order}')
                         await self.place_order(split_order, trader_id)
-
+                        combined_data = await self.handle_transaction_for_order(split_order['id'], combined_data)
                 else:
                     # Add the order to the temp list
                     temp_order_ids.append(order_dict['id'])
                     logger.info(f'Placing order: {order_dict}')
                     await self.place_order(order_dict, trader_id)
-                clear_result = await self.clear_orders()
-
-
-
-                # Initialize the container for transactions
-                if clear_result is None:
-                    clear_result = {'transactions': [], 'removed_active_orders': []}
-                transactions = clear_result['transactions']
-                removed_order_ids = clear_result['removed_active_orders']
-
-                # Handle transactions logging
-                for transaction in transactions:
-                    # Determine the most recent order (ask or bid) based on the timestamp
-                    ask_order = self.all_orders[transaction['ask_order_id']]
-                    bid_order = self.all_orders[transaction['bid_order_id']]
-                    most_recent_order = ask_order if ask_order['timestamp'] > bid_order['timestamp'] else bid_order
-
-                    # Create and append the transaction message
-                    combined_row = self.register_message(most_recent_order,
-                                                         LobsterEventType.EXECUTION_VISIBLE)
-                    combined_data.append(combined_row)
-
-                # If no transaction was made, register the order as a new active order
-                for order_id in temp_order_ids:
-                    if str(order_id) not in removed_order_ids:
-                        combined_row = self.register_message(self.all_orders[order_id],
-                                                             LobsterEventType.NEW_LIMIT_ORDER)
-                        combined_data.append(combined_row)
-
+                    combined_data = await self.handle_transaction_for_order(order_dict['id'], combined_data)
 
 
             logger.info(f"Total of {len(self.buffered_orders)} orders released from buffer")
