@@ -125,6 +125,7 @@ class Trader:
         # TODO: all the following should be removed, it's now only for generating some prices for bids and asks
 
         new_order = {
+
             "action": ActionType.POST_NEW_ORDER.value,
             "amount": amount,
             "price": price,

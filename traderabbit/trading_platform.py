@@ -252,6 +252,7 @@ class TradingSystem:
                                                    # TODO: this is an ugly fix.... let's think how to deal with all that later
                                                    orders=self.list_active_orders + list(self.buffered_orders.values())
                                                    ))
+
             # Increment the buffer release count
 
             self.buffer_release_count += 1
@@ -343,6 +344,7 @@ class TradingSystem:
         clean_order = {
             'id': uuid.uuid4(),
             'status': OrderStatus.BUFFERED.value,
+            'for_execution_only': data.get('for_execution_only', False),
             'amount': data.get('amount'),
             'price': data.get('price'),
             'order_type': data.get('order_type'),

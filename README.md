@@ -2,6 +2,11 @@
 
 ### Short Description of the Trading System Structure
 
+### human trader interface
+in the folder `htapi` there is a FastAPI based app that is responsible for connection with clients' browsers and
+connecting them to the trading system via websockets.
+
+
 #### Files Overview:
 1. **trader.py**: Manages individual trading operations.
 2. **trading_platform.py**: Handles communication with the trading platform and executes orders.
