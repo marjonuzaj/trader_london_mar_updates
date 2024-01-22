@@ -48,7 +48,7 @@ async def websocket_trader_endpoint(websocket: WebSocket, trader_uuid: str):
 
     # Send current status immediately upon new connection
     await websocket.send_json({
-        "status": "success",
+        "type": "success",
         "message": "Connected to trader",
         "data": {
             "trader_uuid": trader_uuid,
@@ -60,7 +60,7 @@ async def websocket_trader_endpoint(websocket: WebSocket, trader_uuid: str):
     try:
         while True:
             message = await websocket.receive_text()
-            await trader.handle_incoming_message(websocket, message)
+            await trader.handle_incoming_message(message)
     except WebSocketDisconnect:
         trader.stop_updates()
         # Additional disconnection handling (logging, cleanup, etc.)

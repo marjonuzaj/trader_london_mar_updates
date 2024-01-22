@@ -6,6 +6,7 @@ import json
 
 
 class HumanTrader:
+    websocket = None
     def __init__(self):
         self.uuid = str(uuid.uuid4())
         self.update_task = None
@@ -29,28 +30,54 @@ class HumanTrader:
         asks = [{'x': random.randint(10000, 10500), 'y': 1} for _ in range(10)]
         return {'bid': bids, 'ask': asks}
 
-    def generate_initial_history(self):
-        # Generate some initial transaction history
-        history = [{'price': random.randint(9500, 10500), 'timestamp': time.time()} for _ in range(10)]
-        return history
+    def generate_initial_history(self, interval=10, num_entries=10):
+        # Get the current time
+        current_time = time.time()
 
-    async def run(self, websocket):
+        # Generate history with prices at different timestamps
+        history = []
+        for i in range(num_entries):
+            price = random.randint(9500, 10500)
+            # Subtracting from the current time as we go back in the loop
+            timestamp = current_time - (num_entries - 1 - i) * interval
+            history.append({'price': price, 'timestamp': timestamp})
+
+        return history
+    # let's write a general method for sending updates to the client which will also automatically injects
+    # the order book and transaction history into the message and also current spread and inventory situation
+    # input: additional mesages that will be added to the dict
+    # output: response of await websocket.send_json
+    # the only required input field is type
+    async def send_message(self,  type, **kwargs):
+        spread = self.calculate_spread()
+        inventory = self.calculate_inventory()
+        # Get the current price from the last transaction in the history
+        current_price = self.transaction_history[-1]['price'] if self.transaction_history else None
+
+        return await self.websocket.send_json(
+            {
+                'type': type,
+                'order_book': self.order_book,
+                'history': self.transaction_history,
+                'spread': spread,
+                'inventory': inventory,
+                'current_price': current_price,
+                **kwargs
+            }
+        )
+    def calculate_inventory(self):
+        # so far just a placeholder to return a dict shares and cash
+        return {'shares': random.randrange(0,100), 'cash': random.randrange(0,100)}
+
+    async def run(self):
         n = 5  # Interval in seconds
         while True:
             print('PERIODIC UPDATE')
             self.generate_order()
             self.execute_orders()
-
-            spread = self.calculate_spread()
-            await websocket.send_json(
-                {
-                    'type': 'update',
-                    'order_book': self.order_book,
-                    'history': self.transaction_history,
-                    'spread': spread
-                }
-            )
+            await self.send_message('update')
             await asyncio.sleep(n)
+
 
     def generate_order(self):
         # Generate a new order
@@ -84,11 +111,11 @@ class HumanTrader:
         # Implement logic to calculate the price of the new order
         return random.randint(9500, 10500)  # Placeholder logic
 
-    def handle_message(self, message):
-        return f"{message} PING"
+
 
     def start_updates(self, websocket):
-        self.update_task = asyncio.create_task(self.run(websocket))
+        self.websocket = websocket
+        self.update_task = asyncio.create_task(self.run())
         self.update_task.add_done_callback(self.task_done_callback)
 
     def task_done_callback(self, task):
@@ -102,7 +129,7 @@ class HumanTrader:
         if self.update_task:
             self.update_task.cancel()
 
-    async def handle_incoming_message(self, websocket, message):
+    async def handle_incoming_message(self, message):
         """
         Handle incoming messages to add new orders and check for executions.
         """
@@ -114,8 +141,8 @@ class HumanTrader:
             if action_type in ['aggressiveAsk', 'passiveAsk', 'aggressiveBid', 'passiveBid']:
                 print('are we gonna process?')
                 self.process_order(action_type)
-                await websocket.send_json(
-                    {'type': 'update', 'order_book': self.order_book, 'history': self.transaction_history})
+                await self.send_message('update')
+
             else:
                 print(f"Invalid message format: {message}")
         except json.JSONDecodeError:
