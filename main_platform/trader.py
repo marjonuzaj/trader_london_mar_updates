@@ -5,10 +5,10 @@ import uuid
 import random
 from structures.structures import OrderModel, OrderStatus, OrderType, ActionType, TraderType
 from datetime import datetime
-from traderabbit.utils import ack_message, convert_to_noise_state, convert_to_book_format, convert_to_trader_actions
-from traderabbit.custom_logger import setup_custom_logger
+from main_platform.utils import ack_message, convert_to_noise_state, convert_to_book_format, convert_to_trader_actions
+from main_platform.custom_logger import setup_custom_logger
 from pprint import pprint
-from traders.noise_trader import get_noise_rule, get_signal_noise, settings_noise, settings, get_noise_rule_unif
+from external_traders.noise_trader import get_noise_rule, get_signal_noise, settings_noise, settings, get_noise_rule_unif
 import numpy as np
 
 logger = setup_custom_logger(__name__)

@@ -1,8 +1,8 @@
 import asyncio
 import argparse
-from traderabbit.custom_logger import setup_custom_logger
-from traderabbit.trader import Trader
-from traderabbit.trading_platform import TradingSystem
+from main_platform.custom_logger import setup_custom_logger
+from main_platform.trader import Trader
+from main_platform.trading_platform import TradingSystem
 import signal
 from structures.structures import TraderType
 import random

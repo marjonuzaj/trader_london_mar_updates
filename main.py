@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, WebSocket
 from uuid import UUID
 from session import TradingSession  # Replace 'your_project_name' with your actual module name
-from traders import Trader
+from external_traders import Trader
 from structures import CreatingTraderModel, ConnectingTraderModel, NewOrderRequest
 from typing import List, Dict, Any
 from pprint import pprint

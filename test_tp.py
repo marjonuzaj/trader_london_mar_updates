@@ -1,5 +1,5 @@
 from session import TradingSession
-from traders import Trader
+from external_traders import Trader
 from pprint import pprint
 # Create two traders
 

@@ -1,10 +1,10 @@
 import asyncio
 import random
-from traderabbit.custom_logger import setup_custom_logger
-from traderabbit.trader import Trader
-from traderabbit.trading_platform import TradingSystem
+from main_platform.custom_logger import setup_custom_logger
+from main_platform.trader import Trader
+from main_platform.trading_platform import TradingSystem
 import signal
-from traderabbit.main_process import main, handle_exit, async_handle_exit
+from main_platform.main_process import main, handle_exit, async_handle_exit
 import argparse
 logger = setup_custom_logger(__name__)
 # Create an argument parser

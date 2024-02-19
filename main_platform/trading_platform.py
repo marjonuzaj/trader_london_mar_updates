@@ -2,19 +2,19 @@ import aio_pika
 import json
 import uuid
 from datetime import datetime
-from traderabbit.utils import ack_message
-from traderabbit.custom_logger import setup_custom_logger
+from main_platform.utils import ack_message
+from main_platform.custom_logger import setup_custom_logger
 from typing import List, Dict
 from structures import OrderStatus, OrderModel, OrderType, TransactionModel, LobsterEventType
 import asyncio
 from collections import defaultdict
-from traderabbit.utils import (CustomEncoder,
-                               create_lobster_message,
-                               append_lobster_messages_to_csv,
-                               convert_to_book_format,
-                               append_order_books_to_csv,
-                               append_combined_data_to_csv
-                               )
+from main_platform.utils import (CustomEncoder,
+                                 create_lobster_message,
+                                 append_lobster_messages_to_csv,
+                                 convert_to_book_format,
+                                 append_order_books_to_csv,
+                                 append_combined_data_to_csv
+                                 )
 from asyncio import Lock, Event
 
 logger = setup_custom_logger(__name__)

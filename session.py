@@ -2,7 +2,7 @@ from typing import List, Union
 from structures import Order, TradingSessionModel, Transaction, Error, OrderStatus
 from uuid import UUID, uuid4
 from order_book import OrderBook
-from traders import Trader
+from external_traders import Trader
 from datetime import datetime, timezone
 from utils import utc_now
 

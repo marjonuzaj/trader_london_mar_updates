@@ -14,8 +14,8 @@ import numpy as np
 import asyncio
 import os
 import csv
-from traderabbit.custom_logger import setup_custom_logger
-from traders.noise_trader import settings
+from main_platform.custom_logger import setup_custom_logger
+from external_traders.noise_trader import settings
 
 np.set_printoptions(floatmode='fixed', precision=0)
 
