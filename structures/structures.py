@@ -83,7 +83,7 @@ class TraderCreationData(BaseModel):
         description="Trade direction for informed traders, to sell or buy",
     )
     noise_warm_ups: int = Field(
-        default=2,
+        default=1,
         title="Noise Warm Ups",
         description="Number of warm up periods for noise traders",
         gt=0,

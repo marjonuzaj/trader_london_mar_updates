@@ -94,6 +94,12 @@ class NoiseTrader(BaseTrader):
             await self.post_new_order(1, self.initial_value - self.step, OrderType.BID)
             await self.post_new_order(1, self.initial_value + 2* self.step, OrderType.ASK)
             await self.post_new_order(1, self.initial_value - 2* self.step, OrderType.BID)
+            await self.post_new_order(1, self.initial_value + 3* self.step, OrderType.ASK)
+            await self.post_new_order(1, self.initial_value - 3* self.step, OrderType.BID)
+            await self.post_new_order(1, self.initial_value + 4* self.step, OrderType.ASK)
+            await self.post_new_order(1, self.initial_value - 4* self.step, OrderType.BID)
+            await self.post_new_order(1, self.initial_value + 5* self.step, OrderType.ASK)
+            await self.post_new_order(1, self.initial_value - 5* self.step, OrderType.BID)
             return
 
 

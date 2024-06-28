@@ -110,26 +110,31 @@ class InformedTrader(BaseTrader):
                 bids = self.order_book.get("bids", [])
                 price_passive = max(bid["x"] for bid in bids)
                 await self.post_new_order(1, price_passive, order_side)
-                for order in self.orders:
-                    if abs(order['price'] - price_passive) > 2*self.step:
-                         await self.send_cancel_order_request(order['id'])
+                # tests whether the orders are within the first three levels
+                three_highest_bids = sorted(bids, key=lambda bid: bid["x"], reverse=True)[:3]
+                if self.orders:
+                    for order in self.orders:
+                        if order['price'] not in three_highest_bids:
+                            await self.send_cancel_order_request(order['id'])
             if order_side == OrderType.ASK:
                 asks = self.order_book.get("asks", [])
                 price_passive = min(ask["x"] for ask in asks)
-                print('Passive Price:', price_passive)
                 await self.post_new_order(1, price_passive, order_side)
-                for order in self.orders:
-                    if abs(order['price'] - price_passive) > 2*self.step:
-                         await self.send_cancel_order_request(order['id'])
-            
+                # tests whether the orders are within the first three levels
+                if self.orders:
+                    three_lowest_asks = sorted(ask["x"] for ask in asks)[:3]
+                    print(three_lowest_asks)
+                    for order in self.orders:
+                        if order['price'] not in three_lowest_asks:
+                            await self.send_cancel_order_request(order['id'])
         else:
             for order in self.orders:
                 await self.send_cancel_order_request(order['id'])
 
+
         # this is the part where the trader
         # crosses the spread
         price = self.get_best_opposite_price(order_side)
-
         if price not in {float('inf'), float('-inf')} and self.shares != 0:
             await self.post_new_order(1, price, order_side)
 

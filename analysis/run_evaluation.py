@@ -36,7 +36,7 @@ con.execute(
 bounds = {
     "trading_day_duration": [5],
     'activity_frequency' : [1],
-    'trade_intensity_informed': [0.2],
+    'trade_intensity_informed': [0.3],
     'passive_order_probability': [0.7],
 }
 
